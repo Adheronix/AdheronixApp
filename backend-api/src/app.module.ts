@@ -21,7 +21,10 @@ import { NotificationModule } from './notification/notification.module';
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true,
+      synchronize: true, // Set to false in production
+      ssl: {
+        rejectUnauthorized: false, // Required for Neon and other cloud providers
+      },
     }),
     PatientModule,
     MedicationModule,
@@ -31,4 +34,4 @@ import { NotificationModule } from './notification/notification.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
