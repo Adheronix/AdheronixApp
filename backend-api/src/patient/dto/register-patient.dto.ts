@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, MinLength, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterPatientDto {
@@ -16,7 +16,7 @@ export class RegisterPatientDto {
   full_names: string;
 
   @ApiProperty({ example: '+1234567890', required: false })
-  @IsNotEmpty()
+  @IsString()
   @IsOptional()
   phone_number?: string;
 

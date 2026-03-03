@@ -19,6 +19,7 @@ const { height } = Dimensions.get("window");
 
 export default function SignUpScreen() {
   const [fullNames, setFullNames] = useState("");
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -41,7 +42,8 @@ export default function SignUpScreen() {
       await authService.signup({
         full_names: fullNames,
         username,
-        phone_number: phoneNumber,
+        email: email || undefined,
+        phone_number: phoneNumber || undefined,
         password,
       });
       Alert.alert("Success", "Account created successfully! Please log in.", [
@@ -90,6 +92,14 @@ export default function SignUpScreen() {
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
             />
             <TextInput
               style={styles.input}
