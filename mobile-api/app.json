@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "meda",
+    "slug": "meda",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/meda.png",
+    "scheme": "meda",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/meda.png",
+        "backgroundImage": "./assets/images/meda.png",
+        "monochromeImage": "./assets/images/meda.png"
+      },
+      
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/meda.png",
+          "imageWidth": 400,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
