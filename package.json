@@ -2,6 +2,7 @@
   "name": "medisafe-app",
   "version": "1.0.0",
   "scripts": {
+    "start": "npm run start --workspace=mobile-api",
     "dev": "concurrently \"npm run start:dev --workspace=backend-api\" \"npm run start --workspace=mobile-api\"",
     "backend": "npm run start:dev --workspace=backend-api",
     "mobile": "npm run start --workspace=mobile-api"
