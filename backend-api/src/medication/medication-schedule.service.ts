@@ -11,6 +11,7 @@ import { Patient } from '../patient/patient.entity';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateIntakeDto } from './dto/update-intake.dto';
 import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/notification.entity';
 
 @Injectable()
 export class MedicationScheduleService {
@@ -220,16 +221,37 @@ export class MedicationScheduleService {
           skipped++;
           break;
         case IntakeStatus.PENDING:
-          // Check if the time has passed
-          if (schedule.scheduled_time < currentTime) {
-            missed++;
-            // Auto-mark as missed
-            schedule.status = IntakeStatus.MISSED;
-            await this.scheduleRepository.save(schedule);
-          } else {
-            pending++;
-          }
-          break;
+        // Check if the time has passed
+        if (schedule.scheduled_time < currentTime) {
+          missed++;
+          // Auto-mark as missed
+          schedule.status = IntakeStatus.MISSED;
+          await this.scheduleRepository.save(schedule);
+
+          // Create a missed-dose notification
+          await this.notificationService.create(
+            patientId,
+            {
+              title: 'Missed dose alert',
+              message: `You missed your ${schedule.scheduled_time} dose of ${
+                (schedule.medication as any)?.prescription?.[0]?.name ||
+                (schedule.medication as any)?.name ||
+                'medication'
+              }.`,
+              type: NotificationType.SYSTEM_ALERT,
+              metadata: {
+                schedule_id: schedule.schedule_id,
+                medication_id: schedule.medication.medication_id,
+                scheduled_date: schedule.scheduled_date,
+                scheduled_time: schedule.scheduled_time,
+                status: schedule.status,
+              },
+            },
+          );
+        } else {
+          pending++;
+        }
+        break;
       }
     }
 

@@ -1,78 +1,80 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
+    ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { notificationService, NotificationItem } from "../services/notification.service";
 
 export default function NotificationsScreen() {
     const router = useRouter();
 
-    const notifications = [
-        {
-            id: 1,
-            title: "Medication Reminder",
-            message: "It's time to take your Paracetamol (8:00 PM).",
-            time: "2 mins ago",
-            type: "medication",
-            read: false,
-        },
-        {
-            id: 2,
-            title: "IoT Device Alert",
-            message: "Your MedSafe device battery is low (15%). Please charge soon.",
-            time: "1 hour ago",
-            type: "iot",
-            read: false,
-        },
-        {
-            id: 3,
-            title: "Caregiver Access",
-            message: "Agathe N. has viewed your latest medication logs.",
-            time: "3 hours ago",
-            type: "caregiver",
-            read: true,
-        },
-        {
-            id: 4,
-            title: "System Update",
-            message: "New firmware is available for your smart dispenser.",
-            time: "Yesterday",
-            type: "system",
-            read: true,
-        },
-        {
-            id: 5,
-            title: "Support Message",
-            message: "You have a new message from the health support team.",
-            time: "Yesterday",
-            type: "support",
-            read: true,
-        },
-    ];
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [markingRead, setMarkingRead] = useState(false);
+
+    const fetchNotifications = async () => {
+        try {
+            const data = await notificationService.list();
+            setNotifications(data);
+        } catch (error) {
+            console.error("Failed to load notifications", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchNotifications();
+    }, []);
 
     const getIcon = (type: string) => {
         switch (type) {
-            case "medication": return "medkit";
-            case "iot": return "hardware-chip";
-            case "caregiver": return "people";
-            case "support": return "help-circle";
+            case "medication_reminder": return "medkit";
+            case "system_alert": return "alert-circle";
+            case "medication_update": return "refresh";
+            case "medication_expiry": return "time";
             default: return "notifications";
         }
     };
 
     const getIconColor = (type: string) => {
         switch (type) {
-            case "medication": return "#4CAF50";
-            case "iot": return "#FF9800";
-            case "caregiver": return "#2196F3";
-            case "support": return "#9C27B0";
+            case "medication_reminder": return "#4CAF50";
+            case "system_alert": return "#FF3B30";
+            case "medication_update": return "#2196F3";
+            case "medication_expiry": return "#FF9800";
             default: return "#000";
+        }
+    };
+
+    const formatTime = (createdAt: string) => {
+        const created = new Date(createdAt);
+        const now = new Date();
+        const diffMs = now.getTime() - created.getTime();
+        const diffMinutes = Math.floor(diffMs / 60000);
+
+        if (diffMinutes < 1) return "Just now";
+        if (diffMinutes < 60) return `${diffMinutes} min ago`;
+        const diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+    };
+
+    const handleMarkAllRead = async () => {
+        try {
+            setMarkingRead(true);
+            await notificationService.markAllAsRead();
+            await fetchNotifications();
+        } finally {
+            setMarkingRead(false);
         }
     };
 
@@ -83,28 +85,58 @@ export default function NotificationsScreen() {
                     <Ionicons name="chevron-back" size={28} color="#000" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Notifications</Text>
-                <TouchableOpacity>
-                    <Text style={styles.markReadText}>Read all</Text>
+                <TouchableOpacity onPress={handleMarkAllRead} disabled={markingRead}>
+                    <Text style={styles.markReadText}>{markingRead ? "..." : "Read all"}</Text>
                 </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                {notifications.map((item) => (
-                    <TouchableOpacity key={item.id} style={[styles.notificationCard, !item.read && styles.unreadCard]}>
-                        <View style={[styles.iconContainer, { backgroundColor: getIconColor(item.type) + '15' }]}>
-                            <Ionicons name={getIcon(item.type)} size={24} color={getIconColor(item.type)} />
-                        </View>
-                        <View style={styles.contentContainer}>
-                            <View style={styles.topRow}>
-                                <Text style={styles.notifTitle}>{item.title}</Text>
-                                <Text style={styles.notifTime}>{item.time}</Text>
+            {loading ? (
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                    <ActivityIndicator size="large" color="#000" />
+                </View>
+            ) : (
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                    {notifications.map((item) => (
+                        <TouchableOpacity
+                            key={item.notification_id}
+                            style={[
+                                styles.notificationCard,
+                                !item.read_at && styles.unreadCard,
+                            ]}
+                        >
+                            <View
+                                style={[
+                                    styles.iconContainer,
+                                    { backgroundColor: getIconColor(item.type) + "15" },
+                                ]}
+                            >
+                                <Ionicons
+                                    name={getIcon(item.type)}
+                                    size={24}
+                                    color={getIconColor(item.type)}
+                                />
                             </View>
-                            <Text style={styles.notifMessage} numberOfLines={2}>{item.message}</Text>
-                        </View>
-                        {!item.read && <View style={styles.unreadDot} />}
-                    </TouchableOpacity>
-                ))}
-            </ScrollView>
+                            <View style={styles.contentContainer}>
+                                <View style={styles.topRow}>
+                                    <Text style={styles.notifTitle}>{item.title}</Text>
+                                    <Text style={styles.notifTime}>
+                                        {formatTime(item.created_at)}
+                                    </Text>
+                                </View>
+                                <Text style={styles.notifMessage} numberOfLines={2}>
+                                    {item.message}
+                                </Text>
+                            </View>
+                            {!item.read_at && <View style={styles.unreadDot} />}
+                        </TouchableOpacity>
+                    ))}
+                    {notifications.length === 0 && (
+                        <Text style={{ textAlign: "center", color: "#999", marginTop: 20 }}>
+                            No notifications yet.
+                        </Text>
+                    )}
+                </ScrollView>
+            )}
         </SafeAreaView>
     );
 }

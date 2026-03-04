@@ -1,5 +1,6 @@
 import api from './api';
 import { deleteItemAsync, getItemAsync, setItemAsync } from './storage';
+import { registerForPushNotificationsAsync } from './push.service';
 
 export const authService = {
   async login(credentials: { username?: string; email?: string; phone_number?: string; password: string }) {
@@ -7,6 +8,8 @@ export const authService = {
     if (response.data.access_token) {
       await setItemAsync('userToken', response.data.access_token);
       await setItemAsync('userData', JSON.stringify(response.data.user || response.data.patient));
+      // Best-effort push registration; ignore failures
+      void registerForPushNotificationsAsync();
     }
     return response.data;
   },
@@ -16,6 +19,8 @@ export const authService = {
     if (response.data.access_token) {
       await setItemAsync('userToken', response.data.access_token);
       await setItemAsync('userData', JSON.stringify(response.data.user || response.data.patient));
+      // Best-effort push registration for new users
+      void registerForPushNotificationsAsync();
     }
     return response.data;
   },

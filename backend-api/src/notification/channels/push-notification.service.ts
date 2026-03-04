@@ -11,17 +11,54 @@ export interface IPushNotificationService {
   send(payload: PushNotificationPayload): Promise<void>;
 }
 
+/**
+ * Production-ready push implementation using Expo Push API.
+ *
+ * The `token` field should be an **Expo push token** (e.g. `ExponentPushToken[...]`)
+ * which the mobile app obtains via `expo-notifications` and sends to the backend.
+ */
 @Injectable()
 export class PushNotificationService implements IPushNotificationService {
   private readonly logger = new Logger(PushNotificationService.name);
 
   async send(payload: PushNotificationPayload): Promise<void> {
-    // In a real implementation, this would use firebase-admin or similar
-    this.logger.log(`[MOCK PUSH] Sending to ${payload.token}`);
-    this.logger.log(`Title: ${payload.title}`);
-    this.logger.log(`Body: ${payload.body}`);
-    if (payload.data) {
-      this.logger.log(`Data: ${JSON.stringify(payload.data)}`);
+    try {
+      if (!payload.token) {
+        this.logger.warn('No push token provided, skipping push');
+        return;
+      }
+
+      const body = {
+        to: payload.token,
+        sound: 'default',
+        title: payload.title,
+        body: payload.body,
+        data: payload.data ?? {},
+      };
+
+      // Node 18+ has global fetch available
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        this.logger.error(
+          `Expo push request failed with status ${response.status}: ${text}`,
+        );
+        return;
+      }
+
+      const json = (await response.json()) as any;
+      this.logger.log(
+        `Expo push response: ${JSON.stringify(json, null, 2)}`,
+      );
+    } catch (error: any) {
+      this.logger.error(`Error sending push notification: ${error.message}`);
     }
   }
 }
