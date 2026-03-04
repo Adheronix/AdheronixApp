@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     },
 
     imageContainer: {
-        height: "50%",
+        height: 400,
     },
 
     image: {

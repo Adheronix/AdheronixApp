@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
     },
     bannerContainer: {
-        height: "65%",
+        height: 400,
         width: "100%",
         position: "relative",
     },
