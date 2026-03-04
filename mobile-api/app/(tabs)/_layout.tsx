@@ -41,7 +41,7 @@ export default function Layout() {
         name="meds"
         options={{
           title: "Meds",
-          tabBarIcon: ({ color }) => <Ionicons name="medical" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="medkit" size={24} color={color} />,
         }}
       />
       <Tabs.Screen
