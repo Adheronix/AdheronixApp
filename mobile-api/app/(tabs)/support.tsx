@@ -19,6 +19,7 @@ export default function SupportScreen() {
     const [reminderStrength, setReminderStrength] = useState("Gentle");
     const [snoozeOption, setSnoozeOption] = useState("5 min");
     const [smartReminders, setSmartReminders] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const missedDoseAlerts = [
         { id: 1, date: "02 May 2026", time: "11 AM" },
@@ -26,6 +27,11 @@ export default function SupportScreen() {
         { id: 3, date: "11 June 2026", time: "12 PM" },
         { id: 4, date: "11 June 2026", time: "12 PM" },
     ];
+
+    const filteredAlerts = missedDoseAlerts.filter((alert) => {
+        const query = searchQuery.toLowerCase();
+        return alert.date.toLowerCase().includes(query) || alert.time.toLowerCase().includes(query);
+    });
 
     return (
         <SafeAreaView style={styles.container}>
@@ -35,6 +41,8 @@ export default function SupportScreen() {
                         style={styles.searchInput}
                         placeholder="Search . . ."
                         placeholderTextColor="#AAA"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
                     />
                     <View style={styles.searchIconContainer}>
                         <Ionicons name="search" size={18} color="#000" />
@@ -150,15 +158,21 @@ export default function SupportScreen() {
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Missed dose alerts</Text>
-                    {missedDoseAlerts.map((alert, index) => (
-                        <View key={index} style={styles.alertCard}>
-                            <Ionicons name="alert-circle" size={48} color="#FF3B30" />
-                            <View style={styles.alertDetails}>
-                                <Text style={styles.alertDate}>{alert.date}</Text>
-                                <Text style={styles.alertMessage}>You missed your {alert.time} dose</Text>
+                    {filteredAlerts.length === 0 ? (
+                        <Text style={{ textAlign: 'center', color: '#999', marginTop: 10 }}>
+                            {searchQuery ? "No matching alerts found." : "No missed dose alerts."}
+                        </Text>
+                    ) : (
+                        filteredAlerts.map((alert, index) => (
+                            <View key={index} style={styles.alertCard}>
+                                <Ionicons name="alert-circle" size={48} color="#FF3B30" />
+                                <View style={styles.alertDetails}>
+                                    <Text style={styles.alertDate}>{alert.date}</Text>
+                                    <Text style={styles.alertMessage}>You missed your {alert.time} dose</Text>
+                                </View>
                             </View>
-                        </View>
-                    ))}
+                        ))
+                    )}
                 </View>
 
                 <View style={{ height: 100 }} />

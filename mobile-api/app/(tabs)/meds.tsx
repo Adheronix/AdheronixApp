@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Image,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View,
-    ActivityIndicator,
-    RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { medicationService } from "../../services/medication.service";
@@ -20,6 +20,7 @@ export default function MedsScreen() {
     const [medications, setMedications] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const fetchMedications = async () => {
         try {
@@ -64,6 +65,10 @@ export default function MedsScreen() {
         fetchMedications();
     };
 
+    const filteredMedications = medications.filter((med) =>
+        med.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -72,6 +77,8 @@ export default function MedsScreen() {
                         style={styles.searchInput}
                         placeholder="Search . . ."
                         placeholderTextColor="#AAA"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
                     />
                     <View style={styles.searchIconContainer}>
                         <Ionicons name="search" size={18} color="#000" />
@@ -105,12 +112,14 @@ export default function MedsScreen() {
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                     }
                 >
-                    {medications.length === 0 ? (
+                    {filteredMedications.length === 0 ? (
                         <View style={{ alignItems: 'center', marginTop: 40 }}>
-                            <Text style={{ fontFamily: "Inter_400Regular", color: "#666" }}>No medications found.</Text>
+                            <Text style={{ fontFamily: "Inter_400Regular", color: "#666" }}>
+                                {searchQuery ? "No matching medications found." : "No medications found."}
+                            </Text>
                         </View>
                     ) : (
-                        medications.map((med) => (
+                        filteredMedications.map((med) => (
                             <View key={med.id} style={styles.card}>
                                 {med.type === 'bottle' ? (
                                     <View style={styles.cardRow}>

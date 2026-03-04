@@ -3,14 +3,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
+    PanResponder,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View,
-    ActivityIndicator,
-    RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scheduleService } from "../../services/schedule.service";
@@ -20,7 +21,28 @@ export default function IotScreen() {
     const [usageData, setUsageData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const batteryLevel = 69; // Mock for now, could be fetched from backend if available
+    const [searchQuery, setSearchQuery] = useState("");
+    const [batteryLevel, setBatteryLevel] = useState(69);
+    const [barWidth, setBarWidth] = useState(0);
+
+    const panResponder = React.useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: () => true,
+            onPanResponderMove: (evt, gestureState) => {
+                if (barWidth > 0) {
+                    const newLevel = Math.min(100, Math.max(0, (evt.nativeEvent.locationX / barWidth) * 100));
+                    setBatteryLevel(Math.round(newLevel));
+                }
+            },
+            onPanResponderGrant: (evt) => {
+                if (barWidth > 0) {
+                    const newLevel = Math.min(100, Math.max(0, (evt.nativeEvent.locationX / barWidth) * 100));
+                    setBatteryLevel(Math.round(newLevel));
+                }
+            }
+        })
+    ).current;
 
     const fetchUsageData = async () => {
         try {
@@ -57,6 +79,13 @@ export default function IotScreen() {
         fetchUsageData();
     };
 
+    const filteredUsageData = usageData.filter((item) => {
+        const medicationName = item.raw.medication?.prescription?.name?.toLowerCase() || "";
+        const action = item.action.toLowerCase();
+        const query = searchQuery.toLowerCase();
+        return medicationName.includes(query) || action.includes(query);
+    });
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -65,6 +94,8 @@ export default function IotScreen() {
                         style={styles.searchInput}
                         placeholder="Search . . ."
                         placeholderTextColor="#AAA"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
                     />
                     <View style={styles.searchIconContainer}>
                         <Ionicons name="search" size={18} color="#000" />
@@ -108,14 +139,18 @@ export default function IotScreen() {
                         <Text style={styles.batteryLabelRed}>Low</Text>
                     </View>
 
-                    <View style={styles.batteryBarWrapper}>
+                    <View
+                        style={styles.batteryBarWrapper}
+                        onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+                        {...panResponder.panHandlers}
+                    >
                         <LinearGradient
                             colors={['#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#F44336']}
                             start={{ x: 0, y: 0.5 }}
                             end={{ x: 1, y: 0.5 }}
                             style={styles.batteryGradient}
                         />
-                        <View style={[styles.batteryPointer, { left: `${batteryLevel}%` }]}>
+                        <View style={[styles.batteryPointer, { left: `${batteryLevel}%` }]} pointerEvents="none">
                             <View style={styles.pointerLine} />
                             <Ionicons name="caret-down" size={12} color="#000" style={styles.pointerIcon} />
                         </View>
@@ -154,10 +189,12 @@ export default function IotScreen() {
 
                     {loading ? (
                         <ActivityIndicator color="#000" />
-                    ) : usageData.length === 0 ? (
-                        <Text style={{ textAlign: 'center', color: '#999', marginTop: 10 }}>No doses detected recently.</Text>
+                    ) : filteredUsageData.length === 0 ? (
+                        <Text style={{ textAlign: 'center', color: '#999', marginTop: 10 }}>
+                            {searchQuery ? "No matching data found." : "No doses detected recently."}
+                        </Text>
                     ) : (
-                        usageData.map((item) => (
+                        filteredUsageData.map((item) => (
                             <View key={item.id} style={styles.usageCard}>
                                 <View style={styles.usageCardLeft}>
                                     <View style={styles.bellIconContainer}>
