@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scheduleService } from "../../services/schedule.service";
+import { notificationService } from "../../services/notification.service";
 
 export default function IotScreen() {
     const router = useRouter();
@@ -24,6 +25,7 @@ export default function IotScreen() {
     const [searchQuery, setSearchQuery] = useState("");
     const [batteryLevel, setBatteryLevel] = useState(69);
     const [barWidth, setBarWidth] = useState(0);
+    const [unreadCount, setUnreadCount] = useState<number>(0);
 
     const panResponder = React.useRef(
         PanResponder.create({
@@ -62,6 +64,8 @@ export default function IotScreen() {
                     raw: item
                 }));
             setUsageData(mappedData.slice(0, 10)); // Just show recent 10
+            const count = await notificationService.getUnreadCount();
+            setUnreadCount(count);
         } catch (error) {
             console.error("Failed to fetch usage data:", error);
         } finally {
@@ -107,7 +111,7 @@ export default function IotScreen() {
                     onPress={() => router.push('/notifications')}
                 >
                     <Ionicons name="notifications" size={24} color="#000" />
-                    <View style={styles.redDot} />
+                    {unreadCount > 0 && <View style={styles.redDot} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>

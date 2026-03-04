@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { medicationService } from "../../services/medication.service";
+import { notificationService } from "../../services/notification.service";
 
 export default function MedsScreen() {
     const router = useRouter();
@@ -21,6 +22,7 @@ export default function MedsScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [unreadCount, setUnreadCount] = useState<number>(0);
 
     const fetchMedications = async () => {
         try {
@@ -48,6 +50,9 @@ export default function MedsScreen() {
                 };
             });
             setMedications(mappedData);
+            // Also refresh unread notifications count when we refresh meds
+            const count = await notificationService.getUnreadCount();
+            setUnreadCount(count);
         } catch (error) {
             console.error("Failed to fetch medications:", error);
         } finally {
@@ -90,7 +95,7 @@ export default function MedsScreen() {
                     onPress={() => router.push('/notifications')}
                 >
                     <Ionicons name="notifications" size={24} color="#000" />
-                    <View style={styles.redDot} />
+                    {unreadCount > 0 && <View style={styles.redDot} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>

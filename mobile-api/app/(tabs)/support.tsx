@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     ScrollView,
     StyleSheet,
@@ -10,6 +10,7 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { notificationService } from "../../services/notification.service";
 
 export default function SupportScreen() {
     const router = useRouter();
@@ -20,6 +21,7 @@ export default function SupportScreen() {
     const [snoozeOption, setSnoozeOption] = useState("5 min");
     const [smartReminders, setSmartReminders] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [unreadCount, setUnreadCount] = useState<number>(0);
 
     const missedDoseAlerts = [
         { id: 1, date: "02 May 2026", time: "11 AM" },
@@ -32,6 +34,18 @@ export default function SupportScreen() {
         const query = searchQuery.toLowerCase();
         return alert.date.toLowerCase().includes(query) || alert.time.toLowerCase().includes(query);
     });
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const count = await notificationService.getUnreadCount();
+                setUnreadCount(count);
+            } catch (e) {
+                console.error("Failed to fetch unread notifications count", e);
+            }
+        };
+        load();
+    }, []);
 
     return (
         <SafeAreaView style={styles.container}>
@@ -54,7 +68,7 @@ export default function SupportScreen() {
                     onPress={() => router.push('/notifications')}
                 >
                     <Ionicons name="notifications" size={24} color="#000" />
-                    <View style={styles.redDot} />
+                    {unreadCount > 0 && <View style={styles.redDot} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>

@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scheduleService } from "../../services/schedule.service";
 import { authService } from "../../services/auth.service";
+import { notificationService } from "../../services/notification.service";
 
 export default function HomeScreen() {
     const router = useRouter();
@@ -22,15 +23,17 @@ export default function HomeScreen() {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [unreadCount, setUnreadCount] = useState<number>(0);
 
     const fetchData = async () => {
         try {
             const userData = await authService.getUser();
             setUser(userData);
 
-            const [upcoming, stats] = await Promise.all([
+            const [upcoming, stats, unread] = await Promise.all([
                 scheduleService.getUpcoming(),
-                scheduleService.getStatus()
+                scheduleService.getStatus(),
+                notificationService.getUnreadCount(),
             ]);
 
             setUpcomingMeds(upcoming.slice(0, 2));
@@ -39,6 +42,7 @@ export default function HomeScreen() {
                 missed: stats.medications_missed,
                 total: stats.total_scheduled
             });
+            setUnreadCount(unread);
         } catch (error) {
             console.error("Failed to fetch home data:", error);
         } finally {
@@ -79,7 +83,7 @@ export default function HomeScreen() {
                         <View style={styles.headerRight}>
                             <TouchableOpacity onPress={() => router.push('/notifications')}>
                                 <Ionicons name="notifications" size={28} color="#000" />
-                                <View style={styles.notificationBadge} />
+                                {unreadCount > 0 && <View style={styles.notificationBadge} />}
                             </TouchableOpacity>
                             <TouchableOpacity onPress={() => router.push('/profile')}>
                                 <View style={styles.profileIconContainer}>
