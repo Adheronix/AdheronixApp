@@ -12,18 +12,24 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../services/auth.service";
+import { notificationService } from "../services/notification.service";
 
 export default function ProfileScreen() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [careGiverAccess, setCareGiverAccess] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
         const fetchUser = async () => {
             try {
-                const userData = await authService.getUser();
+                const [userData, unread] = await Promise.all([
+                    authService.getUser(),
+                    notificationService.getUnreadCount(),
+                ]);
                 setUser(userData);
+                setUnreadCount(unread);
             } catch (error) {
                 console.error("Failed to fetch user:", error);
             } finally {
@@ -69,7 +75,7 @@ export default function ProfileScreen() {
                         onPress={() => router.push('/notifications')}
                     >
                         <Ionicons name="notifications" size={24} color="black" />
-                        <View style={styles.notificationDot} />
+                        {unreadCount > 0 && <View style={styles.notificationDot} />}
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.profileIconButton}>
                         <Ionicons name="person" size={20} color="black" />
@@ -88,12 +94,16 @@ export default function ProfileScreen() {
                         <Text style={styles.infoValue}>{user?.full_names || 'N/A'}</Text>
                     </View>
                     <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Email:</Text>
+                        <Text style={styles.infoValue}>{user?.email || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Phone Number:</Text>
                         <Text style={styles.infoValue}>{user?.phone_number || 'N/A'}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Age:</Text>
-                        <Text style={styles.infoValue}>38 years old</Text>
+                        <Text style={styles.infoValue}>{user?.age ? `${user.age} years old` : 'N/A'}</Text>
                     </View>
                 </View>
 
@@ -101,11 +111,11 @@ export default function ProfileScreen() {
                     <Text style={styles.sectionHeader}>Medical info</Text>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Conditions:</Text>
-                        <Text style={styles.infoValue}>Asthma, High blood pressure</Text>
+                        <Text style={styles.infoValue}>{user?.conditions || 'N/A'}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Allergies:</Text>
-                        <Text style={styles.infoValue}>Wheat, insect stings</Text>
+                        <Text style={styles.infoValue}>{user?.allergies || 'N/A'}</Text>
                     </View>
                 </View>
 
@@ -113,11 +123,11 @@ export default function ProfileScreen() {
                     <Text style={styles.sectionHeader}>Emergency Contact</Text>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Name:</Text>
-                        <Text style={styles.infoValue}>NSHIMIYIMANA Agathe</Text>
+                        <Text style={styles.infoValue}>{user?.emergency_contact_name || 'N/A'}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Phone number:</Text>
-                        <Text style={styles.infoValue}>+250 780 602 022</Text>
+                        <Text style={styles.infoValue}>{user?.emergency_contact_phone || 'N/A'}</Text>
                     </View>
                 </View>
 

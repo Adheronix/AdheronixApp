@@ -1,5 +1,5 @@
 import { DMSerifDisplay_400Regular } from "@expo-google-fonts/dm-serif-display";
-import { Inter_400Regular, Inter_700Bold, useFonts } from "@expo-google-fonts/inter";
+import { Inter_300Light, Inter_400Regular, Inter_700Bold, useFonts } from "@expo-google-fonts/inter";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
@@ -9,6 +9,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
+    Inter_300Light,
     Inter_400Regular,
     Inter_700Bold,
     DMSerifDisplay_400Regular,

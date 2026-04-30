@@ -1,0 +1,97 @@
+<h2>Which signup fields should we keep?</h2>
+<p class="subtitle">Fewer fields = less friction = more sign-ups. What does the app actually need at registration?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="A" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f5f5f5;padding:16px;border-bottom:1px solid #eee;">
+      <div style="width:160px;margin:0 auto;background:#0A0A0A;border-radius:24px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:sans-serif;">
+        <div style="background:#0A0A0A;padding:18px 16px 10px;text-align:center;">
+          <div style="width:32px;height:32px;background:#fff;border-radius:9px;margin:0 auto 6px;"></div>
+          <div style="color:#fff;font-size:9px;font-weight:700;letter-spacing:2px;">MEDISAFE</div>
+          <div style="color:rgba(255,255,255,0.35);font-size:7px;margin-top:2px;">Health with no limits</div>
+        </div>
+        <div style="background:#161616;border-radius:18px 18px 0 0;padding:16px 14px;margin-top:-4px;">
+          <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:1px;">Create account</div>
+          <div style="color:rgba(255,255,255,0.35);font-size:8px;margin-bottom:11px;">Join MediSafe today</div>
+          <!-- 2-col name -->
+          <div style="display:flex;gap:5px;margin-bottom:5px;">
+            <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;color:rgba(255,255,255,0.3);font-size:7px;">First name</div>
+            <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;color:rgba(255,255,255,0.3);font-size:7px;">Last name</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:5px;color:rgba(255,255,255,0.3);font-size:7px;">Email address</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:5px;color:rgba(255,255,255,0.3);font-size:7px;">Password</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:10px;color:rgba(255,255,255,0.3);font-size:7px;">Confirm password</div>
+          <div style="background:#fff;border-radius:8px;padding:7px;text-align:center;color:#000;font-size:8px;font-weight:700;margin-bottom:5px;">Create Account</div>
+          <div style="text-align:center;color:rgba(255,255,255,0.3);font-size:6px;">Already have an account? <span style="color:#fff;">Sign In</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Slim (4 rows, no scroll)</h3>
+      <p>First + Last name side-by-side, Email, Password, Confirm. No username, no phone. Everything fits on screen. Username can be auto-generated from email.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="B" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f5f5f5;padding:16px;border-bottom:1px solid #eee;">
+      <div style="width:160px;margin:0 auto;background:#0A0A0A;border-radius:24px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:sans-serif;">
+        <div style="background:#0A0A0A;padding:18px 16px 10px;text-align:center;">
+          <div style="width:32px;height:32px;background:#fff;border-radius:9px;margin:0 auto 6px;"></div>
+          <div style="color:#fff;font-size:9px;font-weight:700;letter-spacing:2px;">MEDISAFE</div>
+          <div style="color:rgba(255,255,255,0.35);font-size:7px;margin-top:2px;">Health with no limits</div>
+        </div>
+        <div style="background:#161616;border-radius:18px 18px 0 0;padding:16px 14px;margin-top:-4px;">
+          <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:1px;">Create account</div>
+          <div style="color:rgba(255,255,255,0.35);font-size:8px;margin-bottom:11px;">Join MediSafe today</div>
+          <div style="display:flex;gap:5px;margin-bottom:5px;">
+            <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;color:rgba(255,255,255,0.3);font-size:7px;">First name</div>
+            <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;color:rgba(255,255,255,0.3);font-size:7px;">Last name</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:5px;color:rgba(255,255,255,0.3);font-size:7px;">Email address</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:5px;color:rgba(255,255,255,0.3);font-size:7px;">Username</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:5px;color:rgba(255,255,255,0.3);font-size:7px;">Password</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:7px 8px;margin-bottom:8px;color:rgba(255,255,255,0.3);font-size:7px;">Confirm password</div>
+          <div style="background:#fff;border-radius:8px;padding:7px;text-align:center;color:#000;font-size:8px;font-weight:700;margin-bottom:5px;">Create Account</div>
+          <div style="text-align:center;color:rgba(255,255,255,0.3);font-size:6px;">Already have an account? <span style="color:#fff;">Sign In</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Standard (5 rows, minimal scroll)</h3>
+      <p>First + Last side-by-side, Email, Username, Password, Confirm. Keeps username (needed for the app). Slight scroll on small screens only.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="C" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f5f5f5;padding:16px;border-bottom:1px solid #eee;">
+      <div style="width:160px;margin:0 auto;background:#0A0A0A;border-radius:24px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:sans-serif;">
+        <div style="background:#0A0A0A;padding:18px 16px 10px;text-align:center;">
+          <div style="width:32px;height:32px;background:#fff;border-radius:9px;margin:0 auto 6px;"></div>
+          <div style="color:#fff;font-size:9px;font-weight:700;letter-spacing:2px;">MEDISAFE</div>
+          <div style="color:rgba(255,255,255,0.35);font-size:7px;margin-top:2px;">Health with no limits</div>
+        </div>
+        <div style="background:#161616;border-radius:18px 18px 0 0;padding:14px 14px;margin-top:-4px;">
+          <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:1px;">Create account</div>
+          <div style="color:rgba(255,255,255,0.35);font-size:8px;margin-bottom:9px;">Join MediSafe today</div>
+          <div style="display:flex;gap:5px;margin-bottom:4px;">
+            <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;color:rgba(255,255,255,0.3);font-size:7px;">First name</div>
+            <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;color:rgba(255,255,255,0.3);font-size:7px;">Last name</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;margin-bottom:4px;color:rgba(255,255,255,0.3);font-size:7px;">Email address</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;margin-bottom:4px;color:rgba(255,255,255,0.3);font-size:7px;">Phone number</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;margin-bottom:4px;color:rgba(255,255,255,0.3);font-size:7px;">Username</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;margin-bottom:4px;color:rgba(255,255,255,0.3);font-size:7px;">Password</div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:6px 8px;margin-bottom:7px;color:rgba(255,255,255,0.3);font-size:7px;">Confirm password</div>
+          <div style="background:#fff;border-radius:8px;padding:6px;text-align:center;color:#000;font-size:8px;font-weight:700;margin-bottom:4px;">Create Account</div>
+          <div style="text-align:center;color:rgba(255,255,255,0.3);font-size:6px;">Already have an account? <span style="color:#fff;">Sign In</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Full (current, 6+ rows, scrolls)</h3>
+      <p>Keep all existing fields: First + Last, Email, Phone, Username, Password, Confirm. Most complete but requires scrolling. Matches current backend exactly.</p>
+    </div>
+  </div>
+
+</div>

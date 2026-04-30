@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+    Alert,
     ImageBackground,
     ScrollView,
     StyleSheet,
@@ -24,6 +25,19 @@ export default function HomeScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [unreadCount, setUnreadCount] = useState<number>(0);
+    const [marking, setMarking] = useState<string | null>(null);
+
+    const handleMarkTaken = async (scheduleId: string) => {
+        setMarking(scheduleId);
+        try {
+            await scheduleService.markAsTaken(scheduleId);
+            await fetchData();
+        } catch {
+            Alert.alert("Error", "Could not mark medication as taken. Please try again.");
+        } finally {
+            setMarking(null);
+        }
+    };
 
     const fetchData = async () => {
         try {
@@ -77,9 +91,7 @@ export default function HomeScreen() {
 
                     {/* Header */}
                     <View style={styles.header}>
-                        <TouchableOpacity onPress={() => router.back()}>
-                            <Ionicons name="arrow-back" size={28} color="#000" />
-                        </TouchableOpacity>
+                        <Text style={styles.appName}>MediSafe</Text>
                         <View style={styles.headerRight}>
                             <TouchableOpacity onPress={() => router.push('/notifications')}>
                                 <Ionicons name="notifications" size={28} color="#000" />
@@ -128,6 +140,17 @@ export default function HomeScreen() {
                                                 )}
                                             </View>
                                         </View>
+                                        {med.status !== 'taken' && (
+                                            <TouchableOpacity
+                                                style={styles.markBtn}
+                                                onPress={() => handleMarkTaken(med.schedule_id)}
+                                                disabled={marking === med.schedule_id}
+                                            >
+                                                <Text style={styles.markBtnText}>
+                                                    {marking === med.schedule_id ? 'Marking…' : 'Mark as Taken'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
                                 ))
                             )}
@@ -203,6 +226,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingBottom: 150, // Space for custom tab bar
     },
+    appName: {
+        fontSize: 20,
+        fontFamily: "DMSerifDisplay_400Regular",
+        color: "#000",
+    },
     header: {
         flexDirection: "row",
         justifyContent: "space-between",
@@ -263,6 +291,19 @@ const styles = StyleSheet.create({
     },
     medicationItem: {
         marginBottom: 10,
+    },
+    markBtn: {
+        alignSelf: 'flex-start',
+        marginTop: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        backgroundColor: '#000',
+        borderRadius: 6,
+    },
+    markBtnText: {
+        fontSize: 11,
+        color: '#fff',
+        fontFamily: 'Inter_400Regular',
     },
     medName: {
         fontSize: 16,

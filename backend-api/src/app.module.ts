@@ -22,9 +22,7 @@ import { NotificationModule } from './notification/notification.module';
       database: process.env.DB_NAME,
       autoLoadEntities: true,
       synchronize: true, // Set to false in production
-      ssl: {
-        rejectUnauthorized: false, // Required for Neon and other cloud providers
-      },
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     }),
     PatientModule,
     MedicationModule,
