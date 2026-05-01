@@ -2,454 +2,290 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    ImageBackground,
+    ActivityIndicator,
+    Dimensions,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
-    ActivityIndicator,
-    RefreshControl,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scheduleService } from "../../services/schedule.service";
 import { authService } from "../../services/auth.service";
 import { notificationService } from "../../services/notification.service";
+import Animated, { FadeInUp } from "react-native-reanimated";
+
+const { width } = Dimensions.get("window");
+const GRID_SPACING = 15;
+const MODULE_SIZE = (width - 40 - GRID_SPACING) / 2;
+
+// Simple visual trend indicator using standard Views
+const VisualTrend = ({ color = "#E2E8F0" }) => {
+    return (
+        <View style={styles.trendContainer}>
+            <View style={[styles.trendBar, { height: '40%', backgroundColor: color }]} />
+            <View style={[styles.trendBar, { height: '70%', backgroundColor: color }]} />
+            <View style={[styles.trendBar, { height: '50%', backgroundColor: color }]} />
+            <View style={[styles.trendBar, { height: '90%', backgroundColor: color }]} />
+        </View>
+    );
+};
 
 export default function HomeScreen() {
     const router = useRouter();
-    const [upcomingMeds, setUpcomingMeds] = useState<any[]>([]);
-    const [status, setStatus] = useState<any>(null);
     const [user, setUser] = useState<any>(null);
+    const [status, setStatus] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [unreadCount, setUnreadCount] = useState<number>(0);
-    const [marking, setMarking] = useState<string | null>(null);
-
-    const handleMarkTaken = async (scheduleId: string) => {
-        setMarking(scheduleId);
-        try {
-            await scheduleService.markAsTaken(scheduleId);
-            await fetchData();
-        } catch {
-            Alert.alert("Error", "Could not mark medication as taken. Please try again.");
-        } finally {
-            setMarking(null);
-        }
-    };
 
     const fetchData = async () => {
         try {
             const userData = await authService.getUser();
             setUser(userData);
-
-            const [upcoming, stats, unread] = await Promise.all([
-                scheduleService.getUpcoming(),
+            const [stats, unread] = await Promise.all([
                 scheduleService.getStatus(),
                 notificationService.getUnreadCount(),
             ]);
-
-            setUpcomingMeds(upcoming.slice(0, 2));
-            setStatus({
-                taken: stats.medications_taken_today,
-                missed: stats.medications_missed,
-                total: stats.total_scheduled
-            });
+            setStatus(stats);
             setUnreadCount(unread);
         } catch (error) {
-            console.error("Failed to fetch home data:", error);
+            console.error(error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+    useEffect(() => { fetchData(); }, []);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchData();
     };
 
+    if (loading) {
+        return (
+            <View style={[styles.container, styles.centered]}>
+                <ActivityIndicator size="small" color="#000" />
+            </View>
+        );
+    }
+
     return (
-        <SafeAreaView style={styles.container}>
-            {loading ? (
-                <View style={{ flex: 1, justifyContent: 'center' }}>
-                    <ActivityIndicator size="large" color="#000" />
-                </View>
-            ) : (
+        <View style={styles.container}>
+            <SafeAreaView style={styles.safe}>
                 <ScrollView
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                    }
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />}
                 >
-
                     {/* Header */}
                     <View style={styles.header}>
-                        <Text style={styles.appName}>Adheronix</Text>
-                        <View style={styles.headerRight}>
-                            <TouchableOpacity onPress={() => router.push('/notifications')}>
-                                <Ionicons name="notifications" size={28} color="#000" />
-                                {unreadCount > 0 && <View style={styles.notificationBadge} />}
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => router.push('/profile')}>
-                                <View style={styles.profileIconContainer}>
-                                    <Ionicons name="person" size={24} color="#000" />
-                                </View>
-                            </TouchableOpacity>
+                        <View>
+                            <Text style={styles.headerLabel}>GOOD MORNING</Text>
+                            <Text style={styles.userName}>{user?.full_names || 'User'}</Text>
                         </View>
+                        <TouchableOpacity onPress={() => router.push('/notifications')} style={styles.notificationBtn}>
+                            <Ionicons name="notifications-outline" size={24} color="#000" />
+                            {unreadCount > 0 && <View style={styles.badge} />}
+                        </TouchableOpacity>
                     </View>
 
-                    <Text style={{ fontSize: 24, fontFamily: "DMSerifDisplay_400Regular", marginBottom: 10 }}>
-                        Hello, {user?.full_names || 'User'}
-                    </Text>
-
-                    {/* Upcoming Medications Card */}
-                    <ImageBackground
-                        source={require('../../assets/images/rightMeds.png')}
-                        style={styles.card}
-                        imageStyle={styles.cardBackgroundImage}
-                    >
-                        <View style={styles.cardContent}>
-                            <Text style={styles.cardTitle}>Upcoming Medications</Text>
-
-                            {upcomingMeds.length === 0 ? (
-                                <Text style={styles.medSubText}>No upcoming meds for today.</Text>
-                            ) : (
-                                upcomingMeds.map((med, index) => (
-                                    <View key={med.schedule_id || index} style={styles.medicationItem}>
-                                        <Text style={styles.medName}>{med.medication_name || 'Medication'}</Text>
-                                        <View style={styles.medStatusRow}>
-                                            <Text style={styles.medSubText}>{med.scheduled_time}</Text>
-                                            <View style={med.status === 'taken' ? styles.statusBadgeGreen : styles.statusBadgeRed}>
-                                                {med.status === 'taken' ? (
-                                                    <>
-                                                        <View style={styles.dotGreen} />
-                                                        <Text style={styles.statusTextGreen}>Taken</Text>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Ionicons name="time-outline" size={12} color="#FF3B30" />
-                                                        <Text style={styles.statusTextRed}>{med.time_until || 'Soon'}</Text>
-                                                    </>
-                                                )}
-                                            </View>
-                                        </View>
-                                        {med.status !== 'taken' && (
-                                            <TouchableOpacity
-                                                style={styles.markBtn}
-                                                onPress={() => handleMarkTaken(med.schedule_id)}
-                                                disabled={marking === med.schedule_id}
-                                            >
-                                                <Text style={styles.markBtnText}>
-                                                    {marking === med.schedule_id ? 'Marking…' : 'Mark as Taken'}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
-                                ))
-                            )}
+                    {/* Adherence Card */}
+                    <Animated.View entering={FadeInUp.delay(100)} style={styles.mainCard}>
+                        <View>
+                            <Text style={styles.cardLabel}>Daily Adherence</Text>
+                            <Text style={styles.cardValue}>
+                                {Math.round(((status?.medications_taken_today || 0) / (status?.total_scheduled || 1)) * 100)}%
+                            </Text>
                         </View>
-                    </ImageBackground>
+                        <VisualTrend color="#FFFFFF50" />
+                    </Animated.View>
 
-                    {/* General Status */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>General Status</Text>
-                        <Text style={styles.label}>Medication Taken Today:</Text>
-                        <View style={styles.pillRow}>
-                            {[...Array(status?.total || 3)].map((_, i) => (
-                                <View key={i} style={i < (status?.taken || 0) ? styles.checkedPill : styles.uncheckedPill}>
-                                    {i < (status?.taken || 0) ? (
-                                        <Ionicons name="checkmark-circle" size={20} color="#000" />
-                                    ) : (
-                                        <View style={styles.pillOutline} />
-                                    )}
-                                    <Text style={styles.pillNumber}>{i + 1}</Text>
-                                </View>
-                            ))}
-                        </View>
-                        <Text style={styles.label}>Missed medication:</Text>
-                        <Text style={styles.statusValue}>{status?.missed > 0 ? 'Yes' : 'None'}</Text>
+                    {/* Bento Grid */}
+                    <View style={styles.grid}>
+                        <Animated.View entering={FadeInUp.delay(200)} style={styles.module}>
+                            <Text style={styles.moduleLabel}>Taken</Text>
+                            <Text style={styles.moduleValue}>{status?.medications_taken_today || 0}</Text>
+                        </Animated.View>
+
+                        <Animated.View entering={FadeInUp.delay(300)} style={styles.module}>
+                            <Text style={styles.moduleLabel}>Pending</Text>
+                            <Text style={[styles.moduleValue, { color: '#64748B' }]}>
+                                {Math.max(0, (status?.total_scheduled || 0) - (status?.medications_taken_today || 0))}
+                            </Text>
+                        </Animated.View>
+
+                        <Animated.View entering={FadeInUp.delay(400)} style={styles.module}>
+                            <Text style={styles.moduleLabel}>Heart Rate</Text>
+                            <View style={styles.dataRow}>
+                                <Text style={styles.moduleValue}>72</Text>
+                                <Text style={styles.unit}>bpm</Text>
+                            </View>
+                        </Animated.View>
+
+                        <Animated.View entering={FadeInUp.delay(500)} style={styles.module}>
+                            <Text style={styles.moduleLabel}>Sleep</Text>
+                            <View style={styles.dataRow}>
+                                <Text style={styles.moduleValue}>7.5</Text>
+                                <Text style={styles.unit}>hrs</Text>
+                            </View>
+                        </Animated.View>
                     </View>
 
-                    {/* IoT Device Status */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>IoT Device Status</Text>
-                        <View style={styles.iotStatusRow}>
-                            <View style={styles.dotBlack} />
-                            <Text style={styles.iotStatusText}>Connected</Text>
-                        </View>
-                        <Text style={styles.label}>Battery Level:</Text>
-                        <Text style={styles.batteryValue}>69%</Text>
-                    </View>
-
-                    {/* My Medications Card */}
-                    <ImageBackground
-                        source={require('../../assets/images/leftMeds.png')}
-                        style={styles.card}
-                        imageStyle={styles.cardBackgroundImage}
-                    >
-                        <View style={styles.cardContent}>
-                            <Text style={[styles.cardTitle, { textAlign: 'right' }]}>My medications</Text>
-                            <TouchableOpacity
-                                style={styles.viewMoreContainer}
-                                onPress={() => router.push('/meds')}
-                            >
-                                <Text style={styles.viewMoreText}>View all medications</Text>
-                                <View style={styles.viewMoreLine} />
-                            </TouchableOpacity>
-                        </View>
-                    </ImageBackground>
-
-                    {/* Motivational Footer */}
-                    <Text style={styles.footerQuote}>
-                        Taking your medication at the same time every day helps your body respond better and makes it easier to remember.
-                    </Text>
+                    <TouchableOpacity style={styles.logbookBtn} onPress={() => router.push('/meds')}>
+                        <Text style={styles.logbookText}>View Medication Logbook</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#000" />
+                    </TouchableOpacity>
 
                 </ScrollView>
-            )}
-        </SafeAreaView>
+            </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#fff",
+        backgroundColor: "#F8FAFC",
+    },
+    safe: {
+        flex: 1,
     },
     scrollContent: {
         paddingHorizontal: 20,
-        paddingBottom: 150, // Space for custom tab bar
+        paddingBottom: 110,
     },
-    appName: {
-        fontSize: 20,
-        fontFamily: "DMSerifDisplay_400Regular",
-        color: "#000",
+    centered: {
+        justifyContent: "center",
+        alignItems: "center",
     },
     header: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        paddingVertical: 15,
+        marginTop: 20,
+        marginBottom: 30,
     },
-    headerRight: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 15,
-    },
-    notificationBadge: {
-        position: 'absolute',
-        top: 2,
-        right: 2,
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: 'red',
-        borderWidth: 2,
-        borderColor: '#fff',
-    },
-    profileIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#000',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    card: {
-        borderRadius: 24,
-        height: 180,
-        marginVertical: 15,
-        overflow: 'hidden',
-        position: 'relative',
-        justifyContent: 'center',
-    },
-    cardBackgroundImage: {
-        position: 'absolute',
-        right: 0,
-        width: '100%',
-        height: '100%',
-        resizeMode: 'cover',
-        zIndex: 0,
-    },
-    cardContent: {
-        zIndex: 1,
-        paddingHorizontal: 20,
-        width: '100%',
-    },
-    cardTitle: {
-        fontSize: 18,
-        fontFamily: "DMSerifDisplay_400Regular",
-        marginBottom: 15,
-        color: '#000',
-    },
-    medicationItem: {
-        marginBottom: 10,
-    },
-    markBtn: {
-        alignSelf: 'flex-start',
-        marginTop: 6,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        backgroundColor: '#000',
-        borderRadius: 6,
-    },
-    markBtnText: {
-        fontSize: 11,
-        color: '#fff',
-        fontFamily: 'Inter_400Regular',
-    },
-    medName: {
-        fontSize: 16,
-        fontFamily: "Inter_400Regular",
-        color: '#000',
-    },
-    medStatusRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        marginTop: 2,
-    },
-    medSubText: {
+    headerLabel: {
         fontSize: 12,
-        color: '#666',
-        fontFamily: "Inter_400Regular",
+        color: "#64748B",
+        letterSpacing: 1,
     },
-    statusBadgeGreen: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#E8F5E9',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-        gap: 4,
-    },
-    dotGreen: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#4CAF50',
-    },
-    statusTextGreen: {
-        fontSize: 10,
-        color: '#4CAF50',
-        fontFamily: "Inter_400Regular",
-    },
-    statusBadgeRed: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    statusTextRed: {
-        fontSize: 10,
-        color: '#FF3B30',
-        fontFamily: "Inter_400Regular",
-    },
-    section: {
-        marginVertical: 20,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontFamily: "DMSerifDisplay_400Regular",
-        marginBottom: 15,
-    },
-    label: {
-        fontSize: 14,
-        color: '#888',
-        fontFamily: "Inter_400Regular",
-        marginBottom: 8,
-    },
-    pillRow: {
-        flexDirection: 'row',
-        gap: 20,
-        marginBottom: 15,
-    },
-    checkedPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    uncheckedPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    pillOutline: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#000',
-    },
-    pillNumber: {
-        fontSize: 16,
-        fontFamily: "Inter_700Bold",
-    },
-    statusValue: {
-        fontSize: 16,
-        fontFamily: "Inter_400Regular",
-        color: '#000',
-    },
-    iotStatusRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        marginBottom: 10,
-    },
-    dotBlack: {
-        width: 12,
-        height: 12,
-        borderRadius: 6,
-        backgroundColor: '#000',
-    },
-    iotStatusText: {
-        fontSize: 14,
-        color: '#666',
-        fontFamily: "Inter_400Regular",
-    },
-    batteryValue: {
+    userName: {
         fontSize: 24,
-        color: '#4CAF50',
-        fontFamily: "Inter_700Bold",
-    },
-    medicationAlignRight: {
-        alignItems: 'flex-end',
-    },
-    divider: {
-        height: 1,
-        backgroundColor: '#ddd',
-        width: '50%',
-        alignSelf: 'flex-end',
-    },
-    viewMoreContainer: {
-        alignSelf: 'center',
-        marginTop: 15,
-        alignItems: 'center',
-    },
-    viewMoreText: {
-        fontSize: 12,
-        color: '#000',
-        fontFamily: "Inter_700Bold",
-    },
-    viewMoreLine: {
-        height: 1,
-        backgroundColor: '#000',
-        width: '100%',
+        fontWeight: "bold",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+        color: "#000",
         marginTop: 2,
     },
-    footerQuote: {
-        fontSize: 13,
-        color: '#AAA',
-        textAlign: 'center',
-        lineHeight: 20,
-        paddingHorizontal: 40,
-        marginTop: 30,
-        fontFamily: "Inter_400Regular",
+    notificationBtn: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: "#FFF",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
     },
+    badge: {
+        position: 'absolute',
+        top: 14,
+        right: 14,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: "#000",
+    },
+    mainCard: {
+        backgroundColor: "#000",
+        borderRadius: 30,
+        padding: 30,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: GRID_SPACING,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.1,
+        shadowRadius: 20,
+        elevation: 5,
+    },
+    cardLabel: {
+        color: "#FFFFFF90",
+        fontSize: 14,
+    },
+    cardValue: {
+        color: "#FFF",
+        fontSize: 42,
+        fontWeight: "bold",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+        marginTop: 5,
+    },
+    trendContainer: {
+        flexDirection: "row",
+        alignItems: "flex-end",
+        gap: 4,
+        height: 40,
+    },
+    trendBar: {
+        width: 4,
+        borderRadius: 2,
+    },
+    grid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: GRID_SPACING,
+    },
+    module: {
+        width: MODULE_SIZE,
+        height: MODULE_SIZE,
+        backgroundColor: "#FFF",
+        borderRadius: 25,
+        padding: 20,
+        justifyContent: "space-between",
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+    },
+    moduleLabel: {
+        fontSize: 14,
+        color: "#64748B",
+    },
+    moduleValue: {
+        fontSize: 28,
+        fontWeight: "bold",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+        color: "#000",
+    },
+    dataRow: {
+        flexDirection: "row",
+        alignItems: "baseline",
+    },
+    unit: {
+        fontSize: 12,
+        color: "#64748B",
+        marginLeft: 4,
+    },
+    logbookBtn: {
+        marginTop: 25,
+        backgroundColor: "#FFF",
+        height: 60,
+        borderRadius: 30,
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        gap: 10,
+    },
+    logbookText: {
+        fontSize: 15,
+        color: "#000",
+        fontWeight: "700",
+    }
 });

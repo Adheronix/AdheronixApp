@@ -1,66 +1,43 @@
 import { router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../services/auth.service";
-import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
+import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 export default function LoginScreen() {
-  const [identifier, setIdentifier] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ identifier: string | null; password: string | null }>({
-    identifier: null,
-    password: null,
-  });
-
-  const validate = () => {
-    const next = {
-      identifier: !identifier.trim() ? "Email or Username is required" : null,
-      password: !password ? "Password is required" : null,
-    };
-    setErrors(next);
-    return !next.identifier && !next.password;
-  };
-
-  const clearError = (field: keyof typeof errors) => {
-    if (errors[field]) setErrors((e) => ({ ...e, [field]: null }));
-  };
 
   const handleLogin = async () => {
-    if (!validate()) return;
+    if (!username || !password) {
+      Alert.alert("Missing Info", "Please enter both username and password.");
+      return;
+    };
     setLoading(true);
     try {
-      const isEmail = identifier.includes("@");
-      const credentials = isEmail
-        ? { email: identifier.trim().toLowerCase(), password }
-        : { username: identifier.trim().toLowerCase(), password };
-
-      await authService.login(credentials);
+      await authService.login({ username: username.trim(), password });
       router.replace("/home");
     } catch (error: any) {
-      const message =
-        error.response?.data?.message || "Invalid credentials. Please try again.";
-      Alert.alert("Login Failed", message);
+      Alert.alert("Error", error.response?.data?.message || "Invalid credentials.");
     } finally {
       setLoading(false);
     }
@@ -68,13 +45,25 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <LinearGradient
-        colors={["#F8FAFC", "#EEF2FF"]}
-        style={StyleSheet.absoluteFill}
-      />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <SafeAreaView style={styles.safe}>
+      {/* Top Banner */}
+      <View style={styles.heroContainer}>
+        <Image
+          source={require("../../assets/images/healthcare_hero.png")}
+          style={styles.heroImage}
+          contentFit="cover"
+        />
+        <LinearGradient
+          colors={["rgba(0,0,0,0.4)", "transparent"]}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+
+      {/* Login Form Area */}
+      <View style={styles.contentContainer}>
+        <View style={styles.curve} />
+
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.flex}
@@ -82,90 +71,59 @@ export default function LoginScreen() {
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
           >
-            <Animated.View entering={FadeInUp.duration(800)} style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <Feather name="arrow-left" size={24} color="#0F172A" />
-              </TouchableOpacity>
-              <Image
-                source={require("../../assets/images/logo_premium.png")}
-                style={styles.logo}
-                contentFit="contain"
-              />
+            <Animated.View entering={FadeInDown.delay(200)} style={styles.textHeader}>
+              <Text style={styles.title}>WELCOME BACK</Text>
+              <Text style={styles.subtitle}>
+                It's nice to see you again. Let's get you logged in before we continue
+              </Text>
             </Animated.View>
 
-            <Animated.View entering={FadeInUp.delay(200).duration(800)} style={styles.titleSection}>
-              <Text style={styles.title}>Welcome Back</Text>
-              <Text style={styles.subtitle}>Enter your details to access your health dashboard</Text>
-            </Animated.View>
-
-            <Animated.View entering={FadeInUp.delay(400).duration(800)} style={styles.formCard}>
-              {/* Identifier Field */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>EMAIL OR USERNAME</Text>
-                <View style={[styles.inputContainer, errors.identifier && styles.inputError]}>
-                  <Feather name="user" size={20} color="#94A3B8" />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter email or username"
-                    placeholderTextColor="#94A3B8"
-                    value={identifier}
-                    onChangeText={(v) => { setIdentifier(v); clearError("identifier"); }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-                {errors.identifier && <Text style={styles.errorText}>{errors.identifier}</Text>}
+            <Animated.View entering={FadeInUp.delay(400)} style={styles.form}>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Username"
+                  placeholderTextColor="#94A3B8"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                />
               </View>
 
-              {/* Password Field */}
-              <View style={[styles.inputGroup, { marginTop: 20 }]}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.label}>PASSWORD</Text>
-                  <TouchableOpacity>
-                    <Text style={styles.forgotText}>Forgot?</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={[styles.inputContainer, errors.password && styles.inputError]}>
-                  <Feather name="lock" size={20} color="#94A3B8" />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor="#94A3B8"
-                    value={password}
-                    onChangeText={(v) => { setPassword(v); clearError("password"); }}
-                    secureTextEntry={!showPassword}
-                  />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                    <Feather name={showPassword ? "eye" : "eye-off"} size={20} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
-                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor="#94A3B8"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.signupPrompt}>
+                <Text style={styles.promptText}>Don't have an account? </Text>
+                <TouchableOpacity onPress={() => router.push("/auth/signup")}>
+                  <Text style={styles.signupLink}>Sign Up</Text>
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
-                style={[styles.loginBtn, loading && styles.btnDisabled]}
+                style={[styles.loginBtn, loading && { opacity: 0.7 }]}
                 onPress={handleLogin}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.loginBtnText}>Sign In</Text>
+                  <Text style={styles.loginBtnText}>Log In</Text>
                 )}
-              </TouchableOpacity>
-            </Animated.View>
-
-            <Animated.View entering={FadeIn.delay(600)} style={styles.footer}>
-              <Text style={styles.footerText}>New to Adheronix? </Text>
-              <TouchableOpacity onPress={() => router.push("/auth/signup")}>
-                <Text style={styles.signUpLink}>Create Account</Text>
               </TouchableOpacity>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -173,145 +131,106 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#FFFFFF",
   },
-  safe: {
+  heroContainer: {
+    height: height * 0.4,
+    width: width,
+  },
+  heroImage: {
     flex: 1,
+  },
+  contentContainer: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    marginTop: -40,
+  },
+  curve: {
+    position: "absolute",
+    top: -40,
+    backgroundColor: "#FFFFFF",
+    height: 80,
+    width: width * 1.5,
+    left: -width * 0.25,
+    borderTopLeftRadius: width,
+    borderTopRightRadius: width,
   },
   flex: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
     paddingTop: 20,
     paddingBottom: 40,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  textHeader: {
     alignItems: "center",
     marginBottom: 40,
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#FFF",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  logo: {
-    width: 50,
-    height: 50,
-  },
-  titleSection: {
-    marginBottom: 32,
-  },
   title: {
     fontSize: 32,
-    fontFamily: "DMSerifDisplay_400Regular",
-    color: "#0F172A",
-    marginBottom: 8,
+    color: "#000000",
+    fontWeight: "bold",
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    marginBottom: 10,
   },
   subtitle: {
-    fontSize: 16,
-    fontFamily: "Inter_400Regular",
-    color: "#64748B",
-    lineHeight: 24,
+    fontSize: 14,
+    color: "#666666",
+    textAlign: "center",
+    lineHeight: 20,
   },
-  formCard: {
-    backgroundColor: "#FFF",
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  inputGroup: {
-    width: "100%",
-  },
-  labelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 12,
-    fontFamily: "Inter_700Bold",
-    color: "#475569",
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  forgotText: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    color: "#4F46E5",
+  form: {
+    gap: 20,
   },
   inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
+    height: 60,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 15,
+    borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 56,
-  },
-  inputError: {
-    borderColor: "#EF4444",
+    paddingHorizontal: 20,
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 5,
+    elevation: 2,
   },
   input: {
-    flex: 1,
-    marginLeft: 12,
     fontSize: 16,
-    fontFamily: "Inter_400Regular",
-    color: "#0F172A",
+    color: "#000000",
   },
-  errorText: {
-    fontSize: 12,
-    color: "#EF4444",
-    marginTop: 4,
-    fontFamily: "Inter_400Regular",
-  },
-  loginBtn: {
-    marginTop: 32,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: "#0F172A",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  btnDisabled: {
-    opacity: 0.7,
-  },
-  loginBtnText: {
-    color: "#FFF",
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-  },
-  footer: {
+  signupPrompt: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 32,
+    marginTop: 10,
   },
-  footerText: {
+  promptText: {
+    color: "#666666",
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    color: "#64748B",
   },
-  signUpLink: {
+  signupLink: {
+    color: "#000000",
+    fontWeight: "700",
     fontSize: 14,
-    fontFamily: "Inter_700Bold",
-    color: "#4F46E5",
+  },
+  loginBtn: {
+    backgroundColor: "#000000",
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  loginBtnText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
   },
 });
