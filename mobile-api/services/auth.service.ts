@@ -4,6 +4,7 @@ import { registerForPushNotificationsAsync } from './push.service';
 
 export const authService = {
   async login(credentials: { username?: string; email?: string; phone_number?: string; password: string }) {
+    console.log('API Request: POST /patient/login', credentials);
     const response = await api.post('/patient/login', credentials);
     if (response.data.access_token) {
       await setItemAsync('userToken', response.data.access_token);
@@ -38,5 +39,13 @@ export const authService = {
   async getUser() {
     const data = await getItemAsync('userData');
     return data ? JSON.parse(data) : null;
+  },
+
+  async updateProfile(data: any) {
+    const response = await api.patch('/patient/profile', data);
+    if (response.data) {
+      await setItemAsync('userData', JSON.stringify(response.data.patient || response.data));
+    }
+    return response.data;
   }
 };

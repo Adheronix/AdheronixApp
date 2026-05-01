@@ -17,7 +17,7 @@ export default function AiScreen() {
     const [chatStarted, setChatStarted] = useState(false);
     const [message, setMessage] = useState("");
     const [chatHistory, setChatHistory] = useState([
-        { id: 1, type: "bot", text: "Hello! I am Meda AI. How can I help you today?" },
+        { id: 1, type: "bot", text: "Hello! I am Adheronix AI. How can I help you today?" },
     ]);
 
     const handleSendMessage = () => {
@@ -43,10 +43,10 @@ export default function AiScreen() {
                             <Text style={styles.speechText}>Hi!</Text>
                         </View>
                     </View>
-                    <Text style={styles.welcomeTitle}>I am Meda Ai</Text>
+                    <Text style={styles.welcomeTitle}>I am Adheronix Ai</Text>
                     <Text style={styles.welcomeSubtitle}>
-                        Hi am Meda
-                        I am more than glad to see you. 
+                        Hi I am Adheronix
+                        I am more than glad to see you.
                         How can I help you today
                     </Text>
 
@@ -75,7 +75,7 @@ export default function AiScreen() {
                     <TouchableOpacity onPress={() => setChatStarted(false)}>
                         <Ionicons name="chevron-back" size={24} color="#000" />
                     </TouchableOpacity>
-                    <Text style={styles.chatTitle}>Meda AI</Text>
+                    <Text style={styles.chatTitle}>Adheronix AI</Text>
                     <View style={{ width: 24 }} />
                 </View>
 

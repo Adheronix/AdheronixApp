@@ -1,5 +1,8 @@
 import { router } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
+    Alert,
     Image,
     ScrollView,
     StyleSheet,
@@ -9,8 +12,40 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { authService } from "../../services/auth.service";
 
 export default function ProfileSetupScreen() {
+    const [user, setUser] = useState(null);
+    const [age, setAge] = useState("");
+    const [gender, setGender] = useState("");
+    const [conditions, setConditions] = useState("");
+    const [emergencyName, setEmergencyName] = useState("");
+    const [emergencyPhone, setEmergencyPhone] = useState("");
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        authService.getUser().then(setUser);
+    }, []);
+
+    const handleContinue = async () => {
+        setLoading(true);
+        try {
+            await authService.updateProfile({
+                age: parseInt(age) || undefined,
+                gender,
+                conditions,
+                emergency_contact_name: emergencyName,
+                emergency_contact_phone: emergencyPhone,
+            });
+            router.replace("/home");
+        } catch (error) {
+            console.error(error);
+            Alert.alert("Error", "Failed to update profile. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -28,41 +63,83 @@ export default function ProfileSetupScreen() {
                 <View style={styles.formContainer}>
                     <Text style={styles.title}>PROFILE SETUP</Text>
                     <Text style={styles.subtitle}>
-                        Hello! Lets get you signed up before you continue
+                        Hello! Let's get you set up before you continue
                     </Text>
 
                     <View style={styles.form}>
-                       <View style={styles.hardCodedContainer}>
-                            <Text style={styles.hardCodedLabel}>NAMES:</Text>
-                            <Text style={styles.hardCodedValue}>UHIRIWE Chrisostom</Text>
-                      </View>
+                        <View style={styles.userInfoContainer}>
+                            <Text style={styles.label}>NAMES:</Text>
+                            <Text style={styles.userNameText}>{user?.full_names || "Loading..."}</Text>
+                        </View>
+
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Age:</Text>
-                            <TextInput style={styles.input} placeholder="ex: 48 Years old" placeholderTextColor={"#888"}/>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="ex: 48"
+                                placeholderTextColor={"#888"}
+                                keyboardType="numeric"
+                                value={age}
+                                onChangeText={setAge}
+                            />
                         </View>
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Gender:</Text>
-                            <TextInput style={styles.input} placeholder="ex: fitness" placeholderTextColor={"#888"} />
+                            <TextInput
+                                style={styles.input}
+                                placeholder="ex: Male"
+                                placeholderTextColor={"#888"}
+                                value={gender}
+                                onChangeText={setGender}
+                            />
                         </View>
 
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Conditions:</Text>
-                            <TextInput style={styles.input} placeholder="ex: nutrition" placeholderTextColor={"#888"} />
+                            <Text style={styles.label}>Conditions (if any):</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="ex: Diabetes, Hypertension"
+                                placeholderTextColor={"#888"}
+                                value={conditions}
+                                onChangeText={setConditions}
+                            />
                         </View>
 
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Emergency Contact & Phone number:</Text>
-                            <TextInput style={styles.input} placeholder="ex: 4578 3578 2748" placeholderTextColor={"#888"} />
-                             <TextInput style={styles.input} placeholder="ex: 4578 3578 2748" placeholderTextColor={"#888"} />
+                            <Text style={styles.label}>Emergency Contact Name:</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Full Name"
+                                placeholderTextColor={"#888"}
+                                value={emergencyName}
+                                onChangeText={setEmergencyName}
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Emergency Phone number:</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="ex: +250..."
+                                placeholderTextColor={"#888"}
+                                keyboardType="phone-pad"
+                                value={emergencyPhone}
+                                onChangeText={setEmergencyPhone}
+                            />
                         </View>
                     </View>
 
                     <TouchableOpacity
-                        style={styles.button}
-                        onPress={() => router.replace("/home")}
+                        style={[styles.button, loading && { opacity: 0.7 }]}
+                        onPress={handleContinue}
+                        disabled={loading}
                     >
-                        <Text style={styles.buttonText}>Continue</Text>
+                        {loading ? (
+                            <ActivityIndicator color="#fff" />
+                        ) : (
+                            <Text style={styles.buttonText}>Continue</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -79,7 +156,7 @@ const styles = StyleSheet.create({
         flexGrow: 1,
     },
     headerImageContainer: {
-        height: 300,
+        height: 250,
         width: "100%",
         position: "relative",
         justifyContent: "center",
@@ -125,8 +202,16 @@ const styles = StyleSheet.create({
         marginBottom: 30,
     },
     form: {
-        gap: 20,
+        gap: 15,
         marginBottom: 30,
+    },
+    userInfoContainer: {
+        marginBottom: 10,
+    },
+    userNameText: {
+        fontSize: 18,
+        fontFamily: "Inter_700Bold",
+        color: "#000",
     },
     inputGroup: {
         gap: 8,
@@ -157,26 +242,13 @@ const styles = StyleSheet.create({
         borderRadius: 27,
         justifyContent: "center",
         alignItems: "center",
-        width: "70%",
+        width: "80%",
         alignSelf: "center",
-        marginBottom: 30,
+        marginBottom: 40,
     },
     buttonText: {
         color: "#fff",
         fontSize: 18,
         fontFamily: "DMSerifDisplay_400Regular",
     },
-
-hardCodedLabel: {
-  fontSize: 14,
-  fontFamily: "Inter_700Bold",
-  color: "#333",
-  marginBottom: 8,
-},
-
-hardCodedValue: {
-  fontSize: 16,
-  fontFamily: "Inter_400Regular",
-  color: "#111",
-},
 });

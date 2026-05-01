@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,13 +18,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../services/auth.service";
+import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
+import { Image } from "expo-image";
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 type Errors = {
   firstName: string | null;
   lastName: string | null;
+  username: string | null;
   email: string | null;
+  phoneNumber: string | null;
   password: string | null;
   confirmPassword: string | null;
 };
@@ -33,7 +36,9 @@ type Errors = {
 const CLEAR: Errors = {
   firstName: null,
   lastName: null,
+  username: null,
   email: null,
+  phoneNumber: null,
   password: null,
   confirmPassword: null,
 };
@@ -41,6 +46,8 @@ const CLEAR: Errors = {
 export default function SignUpScreen() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -51,6 +58,8 @@ export default function SignUpScreen() {
 
   const lastNameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
+  const usernameRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
@@ -58,17 +67,23 @@ export default function SignUpScreen() {
     const next: Errors = {
       firstName: !firstName.trim() ? "Required" : null,
       lastName: !lastName.trim() ? "Required" : null,
+      username: !username.trim()
+        ? "Username is required"
+        : username.length < 3
+          ? "Min. 3 chars"
+          : null,
       email: !email.trim() ? "Email is required" : null,
+      phoneNumber: null, // Optional
       password: !password
         ? "Password is required"
         : password.length < 6
-        ? "At least 6 characters"
-        : null,
+          ? "Min. 6 chars"
+          : null,
       confirmPassword: !confirmPassword
-        ? "Please confirm your password"
+        ? "Please confirm"
         : confirmPassword !== password
-        ? "Passwords do not match"
-        : null,
+          ? "Mismatch"
+          : null,
     };
     setErrors(next);
     return Object.values(next).every((v) => v === null);
@@ -82,407 +97,324 @@ export default function SignUpScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const suffix = Math.random().toString(36).slice(2, 6);
-      const username =
-        email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "_") +
-        "_" +
-        suffix;
       await authService.signup({
         full_names: `${firstName.trim()} ${lastName.trim()}`,
-        username,
+        username: username.trim().toLowerCase(),
         email: email.trim().toLowerCase(),
+        phone_number: phoneNumber.trim(),
         password,
       });
-      router.replace("/home");
+      router.replace("/auth/profile-setup");
     } catch (error: any) {
       const message =
-        error.response?.data?.message || "Something went wrong. Please try again.";
-      Alert.alert("Signup Failed", message);
+        error.response?.data?.message || "Signup failed. Please try again.";
+      Alert.alert("Error", message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <LinearGradient
+        colors={["#F8FAFC", "#F1F5F9"]}
+        style={StyleSheet.absoluteFill}
+      />
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        {/* Hero — shorter on signup to give more room to the form */}
-        <View style={styles.hero}>
-          <LinearGradient
-            colors={["#B8CFED", "#CDDDF5", "#E4EDF9"]}
-            locations={[0, 0.5, 1]}
-            style={StyleSheet.absoluteFill}
-          />
-
-          {/* Decorative circles */}
-          <View style={styles.orbLarge} />
-          <View style={styles.orbMedium} />
-          <View style={styles.orbSmall} />
-
-          <Image
-            source={require("../../assets/images/meda.png")}
-            style={styles.heroImage}
-            resizeMode="contain"
-          />
-          <LinearGradient
-            colors={["transparent", "#F2F5FC"]}
-            style={styles.heroFade}
-          />
-        </View>
-
-        {/* Card */}
-        <ScrollView
-          style={styles.card}
-          contentContainerStyle={styles.cardContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.flex}
         >
-          {/* Pull handle */}
-          <View style={styles.handle} />
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Animated.View entering={FadeInDown.duration(800)} style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <Feather name="arrow-left" size={22} color="#0F172A" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Create Account</Text>
+              <View style={{ width: 44 }} />
+            </Animated.View>
 
-          <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join MediSafe — it's free</Text>
+            <Animated.View entering={FadeInDown.delay(200)} style={styles.infoSection}>
+              <Text style={styles.title}>Join Adheronix</Text>
+              <Text style={styles.subtitle}>Start managing your health journey today.</Text>
+            </Animated.View>
 
-          <View style={styles.divider} />
-
-          {/* First + Last name */}
-          <View style={styles.nameRow}>
-            <View style={[styles.field, styles.nameField]}>
-              <Text style={styles.label}>FIRST NAME</Text>
-              <View style={[styles.inputWrap, errors.firstName ? styles.inputErr : null]}>
-                <TextInput
-                  style={styles.inputInner}
-                  placeholder="John"
-                  placeholderTextColor="#B0B8CC"
-                  value={firstName}
-                  onChangeText={(v) => { setFirstName(v); clearError("firstName"); }}
-                  autoCapitalize="words"
-                  returnKeyType="next"
-                  onSubmitEditing={() => lastNameRef.current?.focus()}
-                />
+            <Animated.View entering={FadeInUp.delay(400)} style={styles.card}>
+              {/* Names Row */}
+              <View style={styles.row}>
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.label}>FIRST NAME</Text>
+                  <View style={[styles.inputBox, errors.firstName && styles.inputBoxError]}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="John"
+                      value={firstName}
+                      onChangeText={(v) => { setFirstName(v); clearError("firstName"); }}
+                      autoCapitalize="words"
+                      onSubmitEditing={() => lastNameRef.current?.focus()}
+                    />
+                  </View>
+                </View>
+                <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
+                  <Text style={styles.label}>LAST NAME</Text>
+                  <View style={[styles.inputBox, errors.lastName && styles.inputBoxError]}>
+                    <TextInput
+                      ref={lastNameRef}
+                      style={styles.input}
+                      placeholder="Doe"
+                      value={lastName}
+                      onChangeText={(v) => { setLastName(v); clearError("lastName"); }}
+                      autoCapitalize="words"
+                      onSubmitEditing={() => emailRef.current?.focus()}
+                    />
+                  </View>
+                </View>
               </View>
-              {errors.firstName ? (
-                <Text style={styles.errText}>{errors.firstName}</Text>
-              ) : null}
-            </View>
 
-            <View style={[styles.field, styles.nameField]}>
-              <Text style={styles.label}>LAST NAME</Text>
-              <View style={[styles.inputWrap, errors.lastName ? styles.inputErr : null]}>
-                <TextInput
-                  ref={lastNameRef}
-                  style={styles.inputInner}
-                  placeholder="Doe"
-                  placeholderTextColor="#B0B8CC"
-                  value={lastName}
-                  onChangeText={(v) => { setLastName(v); clearError("lastName"); }}
-                  autoCapitalize="words"
-                  returnKeyType="next"
-                  onSubmitEditing={() => emailRef.current?.focus()}
-                />
+              {/* Email */}
+              <View style={styles.field}>
+                <Text style={styles.label}>EMAIL ADDRESS</Text>
+                <View style={[styles.inputBox, errors.email && styles.inputBoxError]}>
+                  <Feather name="mail" size={18} color="#94A3B8" />
+                  <TextInput
+                    ref={emailRef}
+                    style={styles.inputWithIcon}
+                    placeholder="you@example.com"
+                    value={email}
+                    onChangeText={(v) => { setEmail(v); clearError("email"); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    onSubmitEditing={() => usernameRef.current?.focus()}
+                  />
+                </View>
               </View>
-              {errors.lastName ? (
-                <Text style={styles.errText}>{errors.lastName}</Text>
-              ) : null}
-            </View>
-          </View>
 
-          {/* Email */}
-          <View style={styles.field}>
-            <Text style={styles.label}>EMAIL ADDRESS</Text>
-            <View style={[styles.inputWrap, errors.email ? styles.inputErr : null]}>
-              <Feather name="mail" size={15} color="#9BA3B8" style={styles.inputIcon} />
-              <TextInput
-                ref={emailRef}
-                style={styles.inputInner}
-                placeholder="you@example.com"
-                placeholderTextColor="#B0B8CC"
-                value={email}
-                onChangeText={(v) => { setEmail(v); clearError("email"); }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoCorrect={false}
-                returnKeyType="next"
-                onSubmitEditing={() => passwordRef.current?.focus()}
-              />
-            </View>
-            {errors.email ? <Text style={styles.errText}>{errors.email}</Text> : null}
-          </View>
+              {/* Username & Phone */}
+              <View style={styles.row}>
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.label}>USERNAME</Text>
+                  <View style={[styles.inputBox, errors.username && styles.inputBoxError]}>
+                    <TextInput
+                      ref={usernameRef}
+                      style={styles.input}
+                      placeholder="johndoe"
+                      value={username}
+                      onChangeText={(v) => { setUsername(v.replace(/\s/g, "")); clearError("username"); }}
+                      autoCapitalize="none"
+                      onSubmitEditing={() => phoneRef.current?.focus()}
+                    />
+                  </View>
+                </View>
+                <View style={[styles.field, { flex: 1, marginLeft: 12 }]}>
+                  <Text style={styles.label}>PHONE (OPT)</Text>
+                  <View style={styles.inputBox}>
+                    <TextInput
+                      ref={phoneRef}
+                      style={styles.input}
+                      placeholder="+250..."
+                      value={phoneNumber}
+                      onChangeText={setPhoneNumber}
+                      keyboardType="phone-pad"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                    />
+                  </View>
+                </View>
+              </View>
 
-          {/* Password */}
-          <View style={styles.field}>
-            <Text style={styles.label}>PASSWORD</Text>
-            <View style={[styles.inputWrap, errors.password ? styles.inputErr : null]}>
-              <Feather name="lock" size={15} color="#9BA3B8" style={styles.inputIcon} />
-              <TextInput
-                ref={passwordRef}
-                style={styles.inputInner}
-                placeholder="Min. 6 characters"
-                placeholderTextColor="#B0B8CC"
-                value={password}
-                onChangeText={(v) => { setPassword(v); clearError("password"); }}
-                secureTextEntry={!showPassword}
-                returnKeyType="next"
-                onSubmitEditing={() => confirmRef.current?.focus()}
-              />
-              <TouchableOpacity onPress={() => setShowPassword((v) => !v)} style={styles.eye}>
-                <Feather
-                  name={showPassword ? "eye" : "eye-off"}
-                  size={16}
-                  color="#9BA3B8"
-                />
+              {/* Password */}
+              <View style={styles.field}>
+                <Text style={styles.label}>PASSWORD</Text>
+                <View style={[styles.inputBox, errors.password && styles.inputBoxError]}>
+                  <Feather name="lock" size={18} color="#94A3B8" />
+                  <TextInput
+                    ref={passwordRef}
+                    style={styles.inputWithIcon}
+                    placeholder="Min. 6 chars"
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={(v) => { setPassword(v); clearError("password"); }}
+                    onSubmitEditing={() => confirmRef.current?.focus()}
+                  />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                    <Feather name={showPassword ? "eye" : "eye-off"} size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Confirm Password */}
+              <View style={styles.field}>
+                <Text style={styles.label}>CONFIRM PASSWORD</Text>
+                <View style={[styles.inputBox, errors.confirmPassword && styles.inputBoxError]}>
+                  <Feather name="shield" size={18} color="#94A3B8" />
+                  <TextInput
+                    ref={confirmRef}
+                    style={styles.inputWithIcon}
+                    placeholder="Repeat password"
+                    secureTextEntry={!showConfirm}
+                    value={confirmPassword}
+                    onChangeText={(v) => { setConfirmPassword(v); clearError("confirmPassword"); }}
+                  />
+                  <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)}>
+                    <Feather name={showConfirm ? "eye" : "eye-off"} size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.btn, loading && { opacity: 0.7 }]}
+                onPress={handleSignUp}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnText}>Create Account</Text>}
+              </TouchableOpacity>
+            </Animated.View>
+
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Already have an account? </Text>
+              <TouchableOpacity onPress={() => router.push("/auth/login")}>
+                <Text style={styles.loginLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
-            {errors.password ? <Text style={styles.errText}>{errors.password}</Text> : null}
-          </View>
-
-          {/* Confirm password */}
-          <View style={styles.field}>
-            <Text style={styles.label}>CONFIRM PASSWORD</Text>
-            <View style={[styles.inputWrap, errors.confirmPassword ? styles.inputErr : null]}>
-              <Feather name="shield" size={15} color="#9BA3B8" style={styles.inputIcon} />
-              <TextInput
-                ref={confirmRef}
-                style={styles.inputInner}
-                placeholder="Repeat password"
-                placeholderTextColor="#B0B8CC"
-                value={confirmPassword}
-                onChangeText={(v) => { setConfirmPassword(v); clearError("confirmPassword"); }}
-                secureTextEntry={!showConfirm}
-                returnKeyType="done"
-                onSubmitEditing={handleSignUp}
-              />
-              <TouchableOpacity onPress={() => setShowConfirm((v) => !v)} style={styles.eye}>
-                <Feather
-                  name={showConfirm ? "eye" : "eye-off"}
-                  size={16}
-                  color="#9BA3B8"
-                />
-              </TouchableOpacity>
-            </View>
-            {errors.confirmPassword ? (
-              <Text style={styles.errText}>{errors.confirmPassword}</Text>
-            ) : null}
-          </View>
-
-          {/* Create account button */}
-          <TouchableOpacity style={styles.btn} onPress={handleSignUp} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.btnText}>CREATE ACCOUNT</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Footer */}
-          <View style={styles.footerRow}>
-            <Text style={styles.footer}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.push("/auth/login")}>
-              <Text style={styles.footerLink}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
   safe: {
     flex: 1,
-    backgroundColor: "#C4D6EE",
   },
   flex: {
     flex: 1,
-    backgroundColor: "#F2F5FC",
   },
-
-  // Hero
-  hero: {
-    height: SCREEN_HEIGHT * 0.30,
-    overflow: "hidden",
-  },
-  orbLarge: {
-    position: "absolute",
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    top: -70,
-    right: -60,
-    backgroundColor: "rgba(255,255,255,0.35)",
-  },
-  orbMedium: {
-    position: "absolute",
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    bottom: 0,
-    left: -40,
-    backgroundColor: "rgba(160,196,235,0.38)",
-  },
-  orbSmall: {
-    position: "absolute",
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    top: 20,
-    left: SCREEN_WIDTH * 0.32,
-    backgroundColor: "rgba(255,255,255,0.22)",
-  },
-  heroImage: {
-    width: "50%",
-    height: "80%",
-    alignSelf: "center",
-    marginTop: 14,
-  },
-  heroFade: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 70,
-  },
-
-  // Card
-  card: {
-    flex: 1,
-    backgroundColor: "#F2F5FC",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    marginTop: -26,
-  },
-  cardContent: {
+  scrollContent: {
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 36,
+    paddingBottom: 40,
   },
-
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D0D6E8",
-    alignSelf: "center",
-    marginBottom: 20,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 32,
   },
-
-  title: {
-    fontSize: 26,
-    fontFamily: "Inter_400Regular",
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
     color: "#0F172A",
-    marginBottom: 4,
+  },
+  infoSection: {
+    marginBottom: 32,
+  },
+  title: {
+    fontSize: 32,
+    fontFamily: "DMSerifDisplay_400Regular",
+    color: "#0F172A",
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 13,
-    fontFamily: "Inter_300Light",
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
     color: "#64748B",
-    marginBottom: 18,
   },
-  divider: {
-    height: 1,
-    backgroundColor: "#E2E7F2",
-    marginBottom: 18,
+  card: {
+    backgroundColor: "#FFF",
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 4,
   },
-
-  // Name row
-  nameRow: {
+  row: {
     flexDirection: "row",
-    gap: 10,
+    marginBottom: 16,
   },
-  nameField: {
-    flex: 1,
-  },
-
-  // Fields
   field: {
-    marginBottom: 13,
+    marginBottom: 16,
   },
   label: {
-    fontSize: 10,
-    fontFamily: "Inter_400Regular",
-    color: "#8C93A8",
-    letterSpacing: 1.2,
-    marginBottom: 6,
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: "#475569",
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  inputWrap: {
-    height: 50,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#E2E7F2",
-    borderRadius: 14,
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    shadowColor: "#8AA0C8",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 52,
   },
-  inputIcon: {
-    marginRight: 8,
+  inputBoxError: {
+    borderColor: "#EF4444",
   },
-  inputInner: {
+  input: {
     flex: 1,
-    fontSize: 14,
-    fontFamily: "Inter_300Light",
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
     color: "#0F172A",
   },
-  inputErr: {
-    borderColor: "#E53935",
-    backgroundColor: "#FFF8F8",
-  },
-  eye: {
-    padding: 4,
-  },
-  errText: {
-    fontSize: 11,
+  inputWithIcon: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
     fontFamily: "Inter_400Regular",
-    color: "#E53935",
-    marginTop: 3,
-    marginLeft: 2,
+    color: "#0F172A",
   },
-
   btn: {
-    height: 54,
-    backgroundColor: "#0F172A",
+    marginTop: 16,
+    height: 56,
     borderRadius: 16,
+    backgroundColor: "#0F172A",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 6,
-    marginBottom: 18,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 6,
   },
   btnText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: "#FFFFFF",
-    letterSpacing: 2,
-  },
-
-  footerRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
+    color: "#FFF",
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
   },
   footer: {
-    fontSize: 13,
-    fontFamily: "Inter_300Light",
-    color: "#94A3B8",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 32,
   },
-  footerLink: {
-    fontSize: 13,
+  footerText: {
+    fontSize: 14,
     fontFamily: "Inter_400Regular",
-    color: "#0F172A",
+    color: "#64748B",
+  },
+  loginLink: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: "#4F46E5",
   },
 });

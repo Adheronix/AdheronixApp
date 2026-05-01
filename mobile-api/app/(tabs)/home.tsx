@@ -91,7 +91,7 @@ export default function HomeScreen() {
 
                     {/* Header */}
                     <View style={styles.header}>
-                        <Text style={styles.appName}>MediSafe</Text>
+                        <Text style={styles.appName}>Adheronix</Text>
                         <View style={styles.headerRight}>
                             <TouchableOpacity onPress={() => router.push('/notifications')}>
                                 <Ionicons name="notifications" size={28} color="#000" />

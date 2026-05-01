@@ -52,6 +52,30 @@ export class Patient {
   })
   role: UserRole;
 
+  @ApiProperty({ example: 48 })
+  @Column({ nullable: true })
+  age: number;
+
+  @ApiProperty({ example: 'Male' })
+  @Column({ nullable: true })
+  gender: string;
+
+  @ApiProperty({ example: 'None' })
+  @Column({ nullable: true })
+  conditions: string;
+
+  @ApiProperty({ example: 'Peanuts' })
+  @Column({ nullable: true })
+  allergies: string;
+
+  @ApiProperty({ example: 'Jane Doe' })
+  @Column({ nullable: true })
+  emergency_contact_name: string;
+
+  @ApiProperty({ example: '+1234567891' })
+  @Column({ nullable: true })
+  emergency_contact_phone: string;
+
   @ApiProperty()
   @CreateDateColumn()
   created_at: Date;

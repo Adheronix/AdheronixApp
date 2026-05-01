@@ -1,4 +1,4 @@
-# MediSafeApp
+# Adheronix App
 
 A comprehensive medication management system featuring a backend API and a mobile application.
 

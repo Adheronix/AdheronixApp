@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,26 +18,28 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../services/auth.service";
+import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
+import { Image } from "expo-image";
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ email: string | null; password: string | null }>({
-    email: null,
+  const [errors, setErrors] = useState<{ identifier: string | null; password: string | null }>({
+    identifier: null,
     password: null,
   });
 
   const validate = () => {
     const next = {
-      email: !email.trim() ? "Email is required" : null,
+      identifier: !identifier.trim() ? "Email or Username is required" : null,
       password: !password ? "Password is required" : null,
     };
     setErrors(next);
-    return !next.email && !next.password;
+    return !next.identifier && !next.password;
   };
 
   const clearError = (field: keyof typeof errors) => {
@@ -49,11 +50,16 @@ export default function LoginScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      await authService.login({ email: email.trim().toLowerCase(), password });
+      const isEmail = identifier.includes("@");
+      const credentials = isEmail
+        ? { email: identifier.trim().toLowerCase(), password }
+        : { username: identifier.trim().toLowerCase(), password };
+
+      await authService.login(credentials);
       router.replace("/home");
     } catch (error: any) {
       const message =
-        error.response?.data?.message || "Something went wrong. Please try again.";
+        error.response?.data?.message || "Invalid credentials. Please try again.";
       Alert.alert("Login Failed", message);
     } finally {
       setLoading(false);
@@ -61,321 +67,251 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <LinearGradient
+        colors={["#F8FAFC", "#EEF2FF"]}
+        style={StyleSheet.absoluteFill}
+      />
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        {/* Hero */}
-        <View style={styles.hero}>
-          <LinearGradient
-            colors={["#B8CFED", "#CDDDF5", "#E4EDF9"]}
-            locations={[0, 0.5, 1]}
-            style={StyleSheet.absoluteFill}
-          />
-
-          {/* Decorative circles */}
-          <View style={styles.orbLarge} />
-          <View style={styles.orbMedium} />
-          <View style={styles.orbSmall} />
-
-          <Image
-            source={require("../../assets/images/meda.png")}
-            style={styles.heroImage}
-            resizeMode="contain"
-          />
-          <LinearGradient
-            colors={["transparent", "#F2F5FC"]}
-            style={styles.heroFade}
-          />
-        </View>
-
-        {/* Card */}
-        <ScrollView
-          style={styles.card}
-          contentContainerStyle={styles.cardContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.flex}
         >
-          {/* Pull handle */}
-          <View style={styles.handle} />
-
-          <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Sign in to continue to MediSafe</Text>
-
-          {/* Divider */}
-          <View style={styles.divider} />
-
-          {/* Email */}
-          <View style={styles.field}>
-            <Text style={styles.label}>EMAIL ADDRESS</Text>
-            <View style={[styles.inputWrap, errors.email ? styles.inputErr : null]}>
-              <Feather name="mail" size={15} color="#9BA3B8" style={styles.inputIcon} />
-              <TextInput
-                style={styles.inputInner}
-                placeholder="you@example.com"
-                placeholderTextColor="#B0B8CC"
-                value={email}
-                onChangeText={(v) => { setEmail(v); clearError("email"); }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoCorrect={false}
-                returnKeyType="next"
-              />
-            </View>
-            {errors.email ? <Text style={styles.errText}>{errors.email}</Text> : null}
-          </View>
-
-          {/* Password */}
-          <View style={styles.field}>
-            <Text style={styles.label}>PASSWORD</Text>
-            <View style={[styles.inputWrap, errors.password ? styles.inputErr : null]}>
-              <Feather name="lock" size={15} color="#9BA3B8" style={styles.inputIcon} />
-              <TextInput
-                style={styles.inputInner}
-                placeholder="••••••••"
-                placeholderTextColor="#B0B8CC"
-                value={password}
-                onChangeText={(v) => { setPassword(v); clearError("password"); }}
-                secureTextEntry={!showPassword}
-                returnKeyType="done"
-                onSubmitEditing={handleLogin}
-              />
-              <TouchableOpacity onPress={() => setShowPassword((v) => !v)} style={styles.eye}>
-                <Feather
-                  name={showPassword ? "eye" : "eye-off"}
-                  size={16}
-                  color="#9BA3B8"
-                />
-              </TouchableOpacity>
-            </View>
-            {errors.password ? <Text style={styles.errText}>{errors.password}</Text> : null}
-          </View>
-
-          {/* Forgot */}
-          <TouchableOpacity
-            style={styles.forgotWrap}
-            onPress={() => Alert.alert("Coming soon", "Password reset will be available soon.")}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.forgot}>Forgot password?</Text>
-          </TouchableOpacity>
+            <Animated.View entering={FadeInUp.duration(800)} style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <Feather name="arrow-left" size={24} color="#0F172A" />
+              </TouchableOpacity>
+              <Image
+                source={require("../../assets/images/logo_premium.png")}
+                style={styles.logo}
+                contentFit="contain"
+              />
+            </Animated.View>
 
-          {/* Sign in button */}
-          <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.btnText}>SIGN IN</Text>
-            )}
-          </TouchableOpacity>
+            <Animated.View entering={FadeInUp.delay(200).duration(800)} style={styles.titleSection}>
+              <Text style={styles.title}>Welcome Back</Text>
+              <Text style={styles.subtitle}>Enter your details to access your health dashboard</Text>
+            </Animated.View>
 
-          {/* Footer */}
-          <View style={styles.footerRow}>
-            <Text style={styles.footer}>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => router.push("/auth/signup")}>
-              <Text style={styles.footerLink}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <Animated.View entering={FadeInUp.delay(400).duration(800)} style={styles.formCard}>
+              {/* Identifier Field */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>EMAIL OR USERNAME</Text>
+                <View style={[styles.inputContainer, errors.identifier && styles.inputError]}>
+                  <Feather name="user" size={20} color="#94A3B8" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter email or username"
+                    placeholderTextColor="#94A3B8"
+                    value={identifier}
+                    onChangeText={(v) => { setIdentifier(v); clearError("identifier"); }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+                {errors.identifier && <Text style={styles.errorText}>{errors.identifier}</Text>}
+              </View>
+
+              {/* Password Field */}
+              <View style={[styles.inputGroup, { marginTop: 20 }]}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>PASSWORD</Text>
+                  <TouchableOpacity>
+                    <Text style={styles.forgotText}>Forgot?</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.inputContainer, errors.password && styles.inputError]}>
+                  <Feather name="lock" size={20} color="#94A3B8" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="••••••••"
+                    placeholderTextColor="#94A3B8"
+                    value={password}
+                    onChangeText={(v) => { setPassword(v); clearError("password"); }}
+                    secureTextEntry={!showPassword}
+                  />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                    <Feather name={showPassword ? "eye" : "eye-off"} size={20} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.loginBtn, loading && styles.btnDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.loginBtnText}>Sign In</Text>
+                )}
+              </TouchableOpacity>
+            </Animated.View>
+
+            <Animated.View entering={FadeIn.delay(600)} style={styles.footer}>
+              <Text style={styles.footerText}>New to Adheronix? </Text>
+              <TouchableOpacity onPress={() => router.push("/auth/signup")}>
+                <Text style={styles.signUpLink}>Create Account</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
   safe: {
     flex: 1,
-    backgroundColor: "#C4D6EE",
   },
   flex: {
     flex: 1,
-    backgroundColor: "#F2F5FC",
   },
-
-  // Hero
-  hero: {
-    height: SCREEN_HEIGHT * 0.42,
-    overflow: "hidden",
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  orbLarge: {
-    position: "absolute",
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    top: -80,
-    right: -70,
-    backgroundColor: "rgba(255,255,255,0.35)",
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 40,
   },
-  orbMedium: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    bottom: 10,
-    left: -50,
-    backgroundColor: "rgba(160,196,235,0.38)",
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  orbSmall: {
-    position: "absolute",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    top: 30,
-    left: SCREEN_WIDTH * 0.35,
-    backgroundColor: "rgba(255,255,255,0.22)",
+  logo: {
+    width: 50,
+    height: 50,
   },
-  heroImage: {
-    width: "60%",
-    height: "78%",
-    alignSelf: "center",
-    marginTop: 28,
+  titleSection: {
+    marginBottom: 32,
   },
-  heroFade: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 90,
-  },
-
-  // Card
-  card: {
-    flex: 1,
-    backgroundColor: "#F2F5FC",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    marginTop: -26,
-  },
-  cardContent: {
-    paddingHorizontal: 26,
-    paddingTop: 16,
-    paddingBottom: 36,
-  },
-
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D0D6E8",
-    alignSelf: "center",
-    marginBottom: 22,
-  },
-
   title: {
-    fontSize: 28,
-    fontFamily: "Inter_400Regular",
+    fontSize: 32,
+    fontFamily: "DMSerifDisplay_400Regular",
     color: "#0F172A",
-    marginBottom: 5,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 13,
-    fontFamily: "Inter_300Light",
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
     color: "#64748B",
-    marginBottom: 20,
+    lineHeight: 24,
   },
-  divider: {
-    height: 1,
-    backgroundColor: "#E2E7F2",
-    marginBottom: 22,
+  formCard: {
+    backgroundColor: "#FFF",
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 5,
   },
-
-  // Fields
-  field: {
-    marginBottom: 16,
+  inputGroup: {
+    width: "100%",
+  },
+  labelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
   },
   label: {
-    fontSize: 10,
-    fontFamily: "Inter_400Regular",
-    color: "#8C93A8",
-    letterSpacing: 1.2,
-    marginBottom: 7,
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    color: "#475569",
+    letterSpacing: 1,
+    marginBottom: 8,
   },
-  inputWrap: {
-    height: 52,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#E2E7F2",
-    borderRadius: 14,
+  forgotText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: "#4F46E5",
+  },
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    shadowColor: "#8AA0C8",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 56,
   },
-  inputIcon: {
-    marginRight: 10,
+  inputError: {
+    borderColor: "#EF4444",
   },
-  inputInner: {
+  input: {
     flex: 1,
-    fontSize: 15,
-    fontFamily: "Inter_300Light",
+    marginLeft: 12,
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
     color: "#0F172A",
   },
-  inputErr: {
-    borderColor: "#E53935",
-    backgroundColor: "#FFF8F8",
-  },
-  eye: {
-    padding: 4,
-  },
-  errText: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    color: "#E53935",
-    marginTop: 4,
-    marginLeft: 2,
-  },
-
-  forgotWrap: {
-    alignSelf: "flex-end",
-    marginTop: -4,
-    marginBottom: 26,
-  },
-  forgot: {
+  errorText: {
     fontSize: 12,
-    fontFamily: "Inter_300Light",
-    color: "#64748B",
-  },
-
-  btn: {
-    height: 54,
-    backgroundColor: "#0F172A",
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 22,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  btnText: {
-    fontSize: 13,
+    color: "#EF4444",
+    marginTop: 4,
     fontFamily: "Inter_400Regular",
-    color: "#FFFFFF",
-    letterSpacing: 2,
   },
-
-  footerRow: {
-    flexDirection: "row",
+  loginBtn: {
+    marginTop: 32,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: "#0F172A",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  btnDisabled: {
+    opacity: 0.7,
+  },
+  loginBtnText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
   },
   footer: {
-    fontSize: 13,
-    fontFamily: "Inter_300Light",
-    color: "#94A3B8",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 32,
   },
-  footerLink: {
-    fontSize: 13,
+  footerText: {
+    fontSize: 14,
     fontFamily: "Inter_400Regular",
-    color: "#0F172A",
+    color: "#64748B",
+  },
+  signUpLink: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: "#4F46E5",
   },
 });

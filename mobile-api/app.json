@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "meda",
-    "slug": "meda",
+    "name": "Adheronix",
+    "slug": "adheronix",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/meda.png",
@@ -18,7 +18,6 @@
         "backgroundImage": "./assets/images/meda.png",
         "monochromeImage": "./assets/images/meda.png"
       },
-      
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "pan"

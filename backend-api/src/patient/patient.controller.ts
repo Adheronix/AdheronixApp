@@ -23,7 +23,7 @@ import { Patient } from './patient.entity';
 @ApiTags('patient')
 @Controller('patient')
 export class PatientController {
-  constructor(private readonly patientService: PatientService) {}
+  constructor(private readonly patientService: PatientService) { }
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new patient account' })
@@ -50,5 +50,17 @@ export class PatientController {
     @Body('token') token: string,
   ) {
     return this.patientService.updatePushToken(patient.patient_id, token);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update patient profile information' })
+  @ApiOkResponse({ description: 'Profile updated successfully', type: Patient })
+  updateProfile(
+    @GetPatient() patient: Patient,
+    @Body() updateData: Partial<Patient>,
+  ) {
+    return this.patientService.updateProfile(patient.patient_id, updateData);
   }
 }

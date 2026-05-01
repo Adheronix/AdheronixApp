@@ -24,7 +24,7 @@ export class PatientService {
     private readonly patientRepository: Repository<Patient>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async register(dto: RegisterPatientDto) {
     const patient = await this.createPatient(dto, UserRole.PATIENT);
@@ -42,21 +42,23 @@ export class PatientService {
   }
 
   async login(dto: LoginPatientDto) {
+    console.log('Login attempt:', { ...dto, password: '***' });
     if (!dto.email && !dto.username && !dto.phone_number) {
       throw new BadRequestException(
         'Email, Username, or Phone Number must be provided',
       );
     }
 
-    const query = dto.email
-      ? { email: dto.email }
-      : dto.username
-        ? { username: dto.username }
-        : { phone_number: dto.phone_number };
+    const qb = this.patientRepository.createQueryBuilder('patient');
+    if (dto.email) {
+      qb.where('LOWER(patient.email) = :identifier', { identifier: dto.email.toLowerCase() });
+    } else if (dto.username) {
+      qb.where('LOWER(patient.username) = :identifier', { identifier: dto.username.toLowerCase() });
+    } else if (dto.phone_number) {
+      qb.where('patient.phone_number = :identifier', { identifier: dto.phone_number });
+    }
 
-    const patient = await this.patientRepository.findOne({
-      where: query,
-    });
+    const patient = await qb.getOne();
 
     if (!patient) {
       throw new UnauthorizedException('Invalid credentials');
@@ -111,6 +113,25 @@ export class PatientService {
     return this.patientRepository.save(patient);
   }
 
+  async updateProfile(patientId: string, updateData: Partial<Patient>) {
+    const patient = await this.patientRepository.findOne({
+      where: { patient_id: patientId },
+    });
+    if (!patient) {
+      throw new NotFoundException('Patient not found');
+    }
+
+    // Don't allow updating sensitive fields via this method
+    const { patient_id, password_hash, role, ...updatable } = updateData;
+    void patient_id;
+    void password_hash;
+    void role;
+
+    Object.assign(patient, updatable);
+    const updated = await this.patientRepository.save(patient);
+    return this.sanitizePatient(updated);
+  }
+
   private async createPatient(
     dto: RegisterPatientDto,
     role: UserRole,
@@ -148,8 +169,8 @@ export class PatientService {
 
     const password_hash = await bcrypt.hash(dto.password, 10);
     const patient = this.patientRepository.create({
-      email: dto.email,
-      username: dto.username,
+      email: dto.email?.toLowerCase(),
+      username: dto.username?.toLowerCase(),
       full_names: dto.full_names,
       phone_number: dto.phone_number,
       password_hash,

@@ -16,9 +16,9 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('MediSafe Patient API')
+    .setTitle('Adheronix Patient API')
     .setDescription(
-      'Comprehensive API for the MediSafe mobile app, covering patient authentication, medication QR scanning, intake scheduling, and health notifications.',
+      'Comprehensive API for the Adheronix mobile app, covering patient authentication, medication QR scanning, intake scheduling, and health notifications.',
     )
     .setVersion('1.1')
     .addBearerAuth()
