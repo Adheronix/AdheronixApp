@@ -39,16 +39,24 @@ export default function SignUpScreen() {
     }
     setLoading(true);
     try {
+      const trimmedPhoneNumber = phoneNumber.trim();
+
       await authService.signup({
         full_names: `${firstName.trim()} ${lastName.trim()}`,
         username: username.trim().toLowerCase(),
         email: email.trim().toLowerCase(),
-        phone_number: phoneNumber.trim(),
+        ...(trimmedPhoneNumber ? { phone_number: trimmedPhoneNumber } : {}),
         password,
       });
       router.replace("/auth/profile-setup");
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Registration failed.");
+      const message =
+        error.response?.data?.message ||
+        (error.request
+          ? "Cannot reach the backend API. Check that the backend is running and EXPO_PUBLIC_API_URL matches your computer IP."
+          : "Registration failed.");
+
+      Alert.alert("Error", Array.isArray(message) ? message.join("\n") : message);
     } finally {
       setLoading(false);
     }
