@@ -14,8 +14,8 @@ import {
   Platform,
   ScrollView
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../services/auth.service";
+import { BASE_URL } from "../../constants/api";
 import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -37,7 +37,13 @@ export default function LoginScreen() {
       await authService.login({ username: username.trim(), password });
       router.replace("/home");
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Invalid credentials.");
+      const message =
+        error.response?.data?.message ||
+        (error.request
+          ? `Cannot reach the backend API at ${BASE_URL}. Check that the backend is running, your phone and computer are on the same WiFi, then restart Expo.`
+          : "Invalid credentials.");
+
+      Alert.alert("Error", Array.isArray(message) ? message.join("\n") : message);
     } finally {
       setLoading(false);
     }
@@ -75,7 +81,7 @@ export default function LoginScreen() {
             <Animated.View entering={FadeInDown.delay(200)} style={styles.textHeader}>
               <Text style={styles.title}>WELCOME BACK</Text>
               <Text style={styles.subtitle}>
-                It's nice to see you again. Let's get you logged in before we continue
+                {"It's nice to see you again. Let's get you logged in before we continue"}
               </Text>
             </Animated.View>
 
@@ -103,7 +109,7 @@ export default function LoginScreen() {
               </View>
 
               <View style={styles.signupPrompt}>
-                <Text style={styles.promptText}>Don't have an account? </Text>
+                <Text style={styles.promptText}>{"Don't have an account? "}</Text>
                 <TouchableOpacity onPress={() => router.push("/auth/signup")}>
                   <Text style={styles.signupLink}>Sign Up</Text>
                 </TouchableOpacity>
