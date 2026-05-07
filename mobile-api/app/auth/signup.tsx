@@ -14,8 +14,8 @@ import {
   Platform,
   ScrollView
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../services/auth.service";
+import { BASE_URL } from "../../constants/api";
 import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -53,7 +53,7 @@ export default function SignUpScreen() {
       const message =
         error.response?.data?.message ||
         (error.request
-          ? "Cannot reach the backend API. Check that the backend is running and EXPO_PUBLIC_API_URL matches your computer IP."
+          ? `Cannot reach the backend API at ${BASE_URL}. Check that the backend is running, your phone and computer are on the same WiFi, then restart Expo.`
           : "Registration failed.");
 
       Alert.alert("Error", Array.isArray(message) ? message.join("\n") : message);
@@ -92,7 +92,7 @@ export default function SignUpScreen() {
             <Animated.View entering={FadeInDown.delay(200)} style={styles.textHeader}>
               <Text style={styles.title}>WELCOME</Text>
               <Text style={styles.subtitle}>
-                Hello! Let's get you signed up before you continue
+                {"Hello! Let's get you signed up before you continue"}
               </Text>
             </Animated.View>
 
