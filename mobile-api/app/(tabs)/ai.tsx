@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useEffect, useRef, useState } from "react";
 import {
     Image,
     KeyboardAvoidingView,
@@ -12,22 +13,68 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import api from "../../services/api";
 
 export default function AiScreen() {
+    const tabBarHeight = useBottomTabBarHeight();
+    const chatInputRef = useRef<TextInput>(null);
     const [chatStarted, setChatStarted] = useState(false);
     const [message, setMessage] = useState("");
+    const [loading, setLoading] = useState(false);
     const [chatHistory, setChatHistory] = useState([
         { id: 1, type: "bot", text: "Hello! I am Adheronix AI. How can I help you today?" },
     ]);
 
-    const handleSendMessage = () => {
-        if (message.trim() === "") return;
-        setChatHistory([...chatHistory, { id: Date.now(), type: "user", text: message }]);
+    useEffect(() => {
+        if (!chatStarted) return;
+        const focusTimer = setTimeout(() => chatInputRef.current?.focus(), 100);
+        return () => clearTimeout(focusTimer);
+    }, [chatStarted]);
+
+    const buildMessagesForApi = (history: typeof chatHistory) => {
+        return history
+            .filter((item) => item.type === "user" || item.type === "bot")
+            .map((item) => ({
+                role: item.type === "user" ? "user" : "assistant",
+                content: item.text,
+            }));
+    };
+
+    const handleSendMessage = async () => {
+        if (message.trim() === "" || loading) return;
+        const userMsg = { id: Date.now(), type: "user" as const, text: message };
+        const updatedHistory = [...chatHistory, userMsg];
+        setChatHistory(updatedHistory);
         setMessage("");
-        // Simulate bot response
-        setTimeout(() => {
-            setChatHistory(prev => [...prev, { id: Date.now() + 1, type: "bot", text: "I'm analyzing your request regarding medical health. Please wait a moment." }]);
-        }, 1000);
+        setLoading(true);
+
+        try {
+            const apiMessages = buildMessagesForApi(updatedHistory);
+            const response = await api.post("/ai/chat", { messages: apiMessages });
+            const botText =
+                response.data?.message?.trim() ||
+                "I apologize, but I was unable to process your request. Please try again.";
+            setChatHistory((prev) => [
+                ...prev,
+                { id: Date.now() + 1, type: "bot" as const, text: botText },
+            ]);
+        } catch (error: any) {
+            console.error("AI chat failed", error);
+            const status = error?.response?.status;
+            const errorText = status === 401
+                ? "Please log in to use Adheronix AI."
+                : "I could not reach Adheronix AI. Please check that the backend is running and your API URL is reachable from this device.";
+            setChatHistory((prev) => [
+                ...prev,
+                {
+                    id: Date.now() + 1,
+                    type: "bot" as const,
+                    text: errorText,
+                },
+            ]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     if (!chatStarted) {
@@ -45,8 +92,8 @@ export default function AiScreen() {
                     </View>
                     <Text style={styles.welcomeTitle}>I am Adheronix Ai</Text>
                     <Text style={styles.welcomeSubtitle}>
-                        Hi I am Adheronix
-                        I am more than glad to see you.
+                        Hi I am Adheronix{'\n'}
+                        I am more than glad to see you.{'\n'}
                         How can I help you today
                     </Text>
 
@@ -54,9 +101,11 @@ export default function AiScreen() {
                         <TextInput
                             style={styles.input}
                             placeholder="How do you feel?"
-                            onFocus={() => setChatStarted(true)}
+                            value={message}
+                            onChangeText={setMessage}
+                            onSubmitEditing={() => { setChatStarted(true); handleSendMessage(); }}
                         />
-                        <TouchableOpacity style={styles.sendButton} onPress={() => setChatStarted(true)}>
+                        <TouchableOpacity style={styles.sendButton} onPress={() => { setChatStarted(true); handleSendMessage(); }}>
                             <Ionicons name="arrow-up" size={24} color="#fff" />
                         </TouchableOpacity>
                     </View>
@@ -70,6 +119,7 @@ export default function AiScreen() {
             <KeyboardAvoidingView
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
                 style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === "ios" ? tabBarHeight : 0}
             >
                 <View style={styles.chatHeader}>
                     <TouchableOpacity onPress={() => setChatStarted(false)}>
@@ -79,22 +129,34 @@ export default function AiScreen() {
                     <View style={{ width: 24 }} />
                 </View>
 
-                <ScrollView contentContainerStyle={styles.chatScroll}>
+                <ScrollView
+                    style={styles.chatList}
+                    contentContainerStyle={styles.chatScroll}
+                    keyboardShouldPersistTaps="handled"
+                >
                     {chatHistory.map((item) => (
                         <View key={item.id} style={item.type === "bot" ? styles.botMessage : styles.userMessage}>
                             <Text style={item.type === "bot" ? styles.botText : styles.userText}>{item.text}</Text>
                         </View>
                     ))}
+                    {loading && (
+                        <View style={styles.botMessage}>
+                            <Text style={styles.botText}>Thinking...</Text>
+                        </View>
+                    )}
                 </ScrollView>
 
-                <View style={styles.footerInput}>
+                <View style={[styles.footerInput, { marginBottom: tabBarHeight }]}>
                     <TextInput
+                        ref={chatInputRef}
                         style={styles.footerTextInput}
                         placeholder="Type a message..."
                         value={message}
                         onChangeText={setMessage}
+                        onSubmitEditing={handleSendMessage}
+                        editable={!loading}
                     />
-                    <TouchableOpacity style={styles.footerSendButton} onPress={handleSendMessage}>
+                    <TouchableOpacity style={styles.footerSendButton} onPress={handleSendMessage} disabled={loading}>
                         <Ionicons name="send" size={20} color="#fff" />
                     </TouchableOpacity>
                 </View>
@@ -199,7 +261,11 @@ const styles = StyleSheet.create({
     },
     chatScroll: {
         padding: 20,
-        paddingBottom: 40,
+        paddingBottom: 24,
+        flexGrow: 1,
+    },
+    chatList: {
+        flex: 1,
     },
     botMessage: {
         alignSelf: "flex-start",
@@ -236,7 +302,7 @@ const styles = StyleSheet.create({
         gap: 10,
         borderTopWidth: 1,
         borderTopColor: "#f0f0f0",
-        marginBottom: 5, // Tab bar space
+        backgroundColor: "#fff",
     },
     footerTextInput: {
         flex: 1,
