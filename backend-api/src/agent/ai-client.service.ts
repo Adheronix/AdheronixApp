@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import axios, { AxiosError } from 'axios';
 import {
   AgentPatientContext,
   DoctorDecision,
@@ -122,7 +123,7 @@ export class AiClientService {
     };
   }
 
-  private async createChatCompletion(
+  async createChatCompletion(
     body: Record<string, unknown>,
   ): Promise<ChatCompletionResponse> {
     const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
@@ -137,31 +138,50 @@ export class AiClientService {
     const timeoutMs = Number(
       this.configService.get<string>('AGENT_LLM_TIMEOUT_MS') ?? 30000,
     );
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: this.getHeaders(apiKey),
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+    const fallbackModels = [
+      this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ?? 'baidu/cobuddy:free',
+      'baidu/cobuddy:free',
+      'poolside/laguna-xs.2:free',
+      'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+    ];
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(
-          `OpenRouter request failed with ${response.status}: ${errorBody}`,
+    let lastError: Error | null = null;
+
+    for (const model of fallbackModels) {
+      try {
+        const response = await axios.post<ChatCompletionResponse>(
+          endpoint,
+          { ...body, model },
+          {
+            headers: this.getHeaders(apiKey),
+            timeout: timeoutMs,
+            family: 4, // Force IPv4 to avoid IPv6 timeout issues
+          },
         );
-      }
 
-      return (await response.json()) as ChatCompletionResponse;
-    } catch (error) {
-      this.logger.error(`LLM request failed: ${(error as Error).message}`);
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+        return response.data;
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+          const errorBody = error.response?.data
+            ? JSON.stringify(error.response.data)
+            : error.message;
+
+          if (status === 429) {
+            this.logger.warn(`Model ${model} rate-limited, trying next fallback...`);
+            lastError = error;
+            continue;
+          }
+
+          throw new Error(`OpenRouter request failed with ${status}: ${errorBody}`);
+        }
+        throw error;
+      }
     }
+
+    this.logger.error(`All fallback models failed. Last error: ${(lastError as Error).message}`);
+    throw lastError ?? new Error('All fallback models failed');
   }
 
   private getHeaders(apiKey: string): Record<string, string> {
