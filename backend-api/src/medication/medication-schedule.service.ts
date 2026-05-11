@@ -221,17 +221,15 @@ export class MedicationScheduleService {
           skipped++;
           break;
         case IntakeStatus.PENDING:
-        // Check if the time has passed
-        if (schedule.scheduled_time < currentTime) {
-          missed++;
-          // Auto-mark as missed
-          schedule.status = IntakeStatus.MISSED;
-          await this.scheduleRepository.save(schedule);
+          // Check if the time has passed
+          if (schedule.scheduled_time < currentTime) {
+            missed++;
+            // Auto-mark as missed
+            schedule.status = IntakeStatus.MISSED;
+            await this.scheduleRepository.save(schedule);
 
-          // Create a missed-dose notification
-          await this.notificationService.create(
-            patientId,
-            {
+            // Create a missed-dose notification
+            await this.notificationService.create(patientId, {
               title: 'Missed dose alert',
               message: `You missed your ${schedule.scheduled_time} dose of ${
                 (schedule.medication as any)?.prescription?.[0]?.name ||
@@ -246,12 +244,11 @@ export class MedicationScheduleService {
                 scheduled_time: schedule.scheduled_time,
                 status: schedule.status,
               },
-            },
-          );
-        } else {
-          pending++;
-        }
-        break;
+            });
+          } else {
+            pending++;
+          }
+          break;
       }
     }
 

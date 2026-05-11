@@ -10,6 +10,7 @@ import { AdminModule } from './admin/admin.module';
 import { NotificationModule } from './notification/notification.module';
 import { ensureDatabaseExists } from './database/ensure-database';
 import { AgentModule } from './agent/agent.module';
+import { HealthScoreModule } from './health-score/health-score.module';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { AgentModule } from './agent/agent.module';
           password: process.env.DB_PASSWORD,
           database: process.env.DB_NAME,
           autoLoadEntities: true,
-          synchronize: true, // Set to false in production
+          synchronize: true,
           ssl:
             process.env.DB_SSL === 'true'
               ? { rejectUnauthorized: false }
@@ -40,6 +41,7 @@ import { AgentModule } from './agent/agent.module';
     AdminModule,
     NotificationModule,
     AgentModule,
+    HealthScoreModule,
   ],
   controllers: [AppController],
   providers: [AppService],

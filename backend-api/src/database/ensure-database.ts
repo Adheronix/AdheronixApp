@@ -40,4 +40,30 @@ export async function ensureDatabaseExists(): Promise<void> {
   } finally {
     await client.end();
   }
+
+  await enablePgvector(database);
+}
+
+async function enablePgvector(database: string): Promise<void> {
+  const client = new Client({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 5432),
+    user: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
+    database,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  });
+
+  await client.connect();
+
+  try {
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+  } catch (error) {
+    console.log(
+      '[DB] pgvector extension not available — RAG features will be disabled until pgvector is installed.',
+      'To install: sudo apt install postgresql-16-pgvector (adjust version for your PostgreSQL).',
+    );
+  } finally {
+    await client.end();
+  }
 }

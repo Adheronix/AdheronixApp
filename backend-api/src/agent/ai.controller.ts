@@ -12,7 +12,13 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
 } from '@nestjs/swagger';
-import { IsArray, ValidateNested, IsString, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsArray,
+  ValidateNested,
+  IsString,
+  IsOptional,
+  IsBoolean,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { GetPatient } from '../auth/decorator/get-user.decorator';
@@ -74,8 +80,9 @@ export class AiController {
 
     let contextMessage = '';
     if (body.patient_context !== false) {
-      const context =
-        await this.doctorAgentService.buildPatientContext(patient.patient_id);
+      const context = await this.doctorAgentService.buildPatientContext(
+        patient.patient_id,
+      );
       contextMessage = `Patient Context (for reference only, do not diagnose): ${JSON.stringify(context)}`;
     }
 
@@ -85,7 +92,9 @@ export class AiController {
         content:
           'You are Adheronix AI, a helpful medical adherence assistant. You help patients with medication questions, adherence support, and general health guidance. You are NOT a replacement for a licensed medical professional. Never provide diagnoses. Always advise seeking professional medical help for urgent concerns. Be concise, friendly, and focused on medication adherence.',
       },
-      ...(contextMessage ? [{ role: 'system' as const, content: contextMessage }] : []),
+      ...(contextMessage
+        ? [{ role: 'system' as const, content: contextMessage }]
+        : []),
       ...body.messages.map((m) => ({
         role: m.role,
         content: m.content,

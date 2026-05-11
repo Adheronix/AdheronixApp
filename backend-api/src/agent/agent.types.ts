@@ -6,6 +6,22 @@ export type DoctorToolName =
   | 'requestHumanReview'
   | 'callEmergencySupport';
 
+export type EventClassification =
+  | 'simple_chat'
+  | 'medical_question'
+  | 'missed_dose_check'
+  | 'ddi_query'
+  | 'health_score_update'
+  | 'chw_alert_required'
+  | 'refill_trigger'
+  | 'kinyarwanda_input'
+  | 'ocr_scan_required'
+  | 'simple_dashboard_load'
+  | 'dose_taken_action'
+  | 'schedule_query';
+
+export type DetectedLanguage = 'english' | 'french' | 'kinyarwanda';
+
 export interface AgentTrigger {
   source: string;
   reason?: string;
@@ -28,6 +44,7 @@ export interface AgentPatientContext {
     conditions?: string | null;
     allergies?: string | null;
     has_emergency_contact: boolean;
+    preferred_language?: string;
   };
   medication_summary: {
     active_medication_count: number;
@@ -58,6 +75,13 @@ export interface AgentPatientContext {
     taken_at?: Date | null;
     notes?: string | null;
   }>;
+  health_score?: {
+    current: number;
+    delta: number;
+    trend: 'up' | 'down' | 'stable';
+    streak_current: number;
+    streak_best: number;
+  };
   trigger?: AgentTrigger;
 }
 
@@ -89,4 +113,55 @@ export interface AgentActionResult {
   status: 'executed' | 'deferred' | 'skipped' | 'failed';
   detail?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface RoutingDecision {
+  classification: EventClassification;
+  confidence: number;
+  model: string;
+  taskPacket: Record<string, unknown>;
+}
+
+export interface HermesVerdict {
+  answer: string;
+  severity: AgentSeverity;
+  requires_action: boolean;
+  actions: string[];
+  patient_explanation: string;
+  confidence: number;
+  rag_sources: string[];
+}
+
+export interface ToolExecutionResult {
+  tool: string;
+  status: 'success' | 'failed' | 'fallback';
+  result: Record<string, unknown>;
+  error?: string;
+}
+
+export interface AgenticResponse {
+  message: string;
+  formatted_message: string;
+  classification: EventClassification;
+  model: string;
+  actions_taken: ToolExecutionResult[];
+  health_score_delta?: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface OCRExtractionResult {
+  medications: Array<{
+    name: string;
+    dosage?: string;
+    frequency?: string;
+    duration?: string;
+    instructions?: string;
+  }>;
+  raw_text: string;
+  confidence: number;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
 }

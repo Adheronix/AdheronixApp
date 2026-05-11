@@ -53,10 +53,8 @@ export class PushNotificationService implements IPushNotificationService {
         return;
       }
 
-      const json = (await response.json()) as any;
-      this.logger.log(
-        `Expo push response: ${JSON.stringify(json, null, 2)}`,
-      );
+      const json = await response.json();
+      this.logger.log(`Expo push response: ${JSON.stringify(json, null, 2)}`);
     } catch (error: any) {
       this.logger.error(`Error sending push notification: ${error.message}`);
     }

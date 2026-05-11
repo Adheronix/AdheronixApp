@@ -24,7 +24,7 @@ export class PatientService {
     private readonly patientRepository: Repository<Patient>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   async register(dto: RegisterPatientDto) {
     const patient = await this.createPatient(dto, UserRole.PATIENT);
@@ -51,11 +51,17 @@ export class PatientService {
 
     const qb = this.patientRepository.createQueryBuilder('patient');
     if (dto.email) {
-      qb.where('LOWER(patient.email) = :identifier', { identifier: dto.email.toLowerCase() });
+      qb.where('LOWER(patient.email) = :identifier', {
+        identifier: dto.email.toLowerCase(),
+      });
     } else if (dto.username) {
-      qb.where('LOWER(patient.username) = :identifier', { identifier: dto.username.toLowerCase() });
+      qb.where('LOWER(patient.username) = :identifier', {
+        identifier: dto.username.toLowerCase(),
+      });
     } else if (dto.phone_number) {
-      qb.where('patient.phone_number = :identifier', { identifier: dto.phone_number });
+      qb.where('patient.phone_number = :identifier', {
+        identifier: dto.phone_number,
+      });
     }
 
     const patient = await qb.getOne();

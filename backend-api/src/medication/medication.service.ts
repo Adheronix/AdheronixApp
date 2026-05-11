@@ -15,7 +15,7 @@ export class MedicationService {
     @InjectRepository(Patient)
     private readonly patientRepository: Repository<Patient>,
     private readonly notificationService: NotificationService,
-  ) { }
+  ) {}
 
   async createFromQR(patientId: string, dto: CreateMedicationDto) {
     const patient = await this.patientRepository.findOne({
@@ -44,7 +44,9 @@ export class MedicationService {
     await this.notificationService.createMedicationReminder(
       patientId,
       saved.medication_id,
-      (saved.prescription as any)?.prescription?.[0]?.name || (saved.prescription as any)?.name || 'Medication',
+      (saved.prescription as any)?.prescription?.[0]?.name ||
+        (saved.prescription as any)?.name ||
+        'Medication',
       nextDose,
     );
 

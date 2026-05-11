@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 import {
   AgentPatientContext,
   DoctorDecision,
@@ -140,7 +140,8 @@ export class AiClientService {
     );
 
     const fallbackModels = [
-      this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ?? 'baidu/cobuddy:free',
+      this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
+        'baidu/cobuddy:free',
       'baidu/cobuddy:free',
       'poolside/laguna-xs.2:free',
       'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
@@ -169,18 +170,24 @@ export class AiClientService {
             : error.message;
 
           if (status === 429) {
-            this.logger.warn(`Model ${model} rate-limited, trying next fallback...`);
+            this.logger.warn(
+              `Model ${model} rate-limited, trying next fallback...`,
+            );
             lastError = error;
             continue;
           }
 
-          throw new Error(`OpenRouter request failed with ${status}: ${errorBody}`);
+          throw new Error(
+            `OpenRouter request failed with ${status}: ${errorBody}`,
+          );
         }
         throw error;
       }
     }
 
-    this.logger.error(`All fallback models failed. Last error: ${(lastError as Error).message}`);
+    this.logger.error(
+      `All fallback models failed. Last error: ${(lastError as Error).message}`,
+    );
     throw lastError ?? new Error('All fallback models failed');
   }
 
@@ -356,9 +363,7 @@ export class AiClientService {
     }
 
     const parsed = this.parseJsonObject(value);
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, unknown>)
-      : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
   }
 
   private parseJsonObject(value: string): Record<string, unknown> | null {

@@ -23,7 +23,7 @@ import { Patient } from './patient.entity';
 @ApiTags('patient')
 @Controller('patient')
 export class PatientController {
-  constructor(private readonly patientService: PatientService) { }
+  constructor(private readonly patientService: PatientService) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new patient account' })
