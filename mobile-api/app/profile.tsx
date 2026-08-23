@@ -9,6 +9,7 @@ import {
     View,
     ActivityIndicator,
     Alert,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../services/auth.service";
@@ -39,7 +40,23 @@ export default function ProfileScreen() {
         fetchUser();
     }, []);
 
+    const logoutAndRedirect = async () => {
+        await authService.logout();
+        setUser(null);
+        router.replace('/auth/login');
+    };
+
     const handleLogout = () => {
+        if (Platform.OS === 'web') {
+            const confirmed = typeof window === 'undefined'
+                ? true
+                : window.confirm("Are you sure you want to logout?");
+            if (confirmed) {
+                void logoutAndRedirect();
+            }
+            return;
+        }
+
         Alert.alert(
             "Logout",
             "Are you sure you want to logout?",
@@ -48,10 +65,7 @@ export default function ProfileScreen() {
                 {
                     text: "Logout",
                     style: "destructive",
-                    onPress: async () => {
-                        await authService.logout();
-                        router.replace('/auth/login');
-                    }
+                    onPress: logoutAndRedirect,
                 }
             ]
         );
@@ -284,4 +298,3 @@ const styles = StyleSheet.create({
         fontFamily: "Inter_700Bold",
     },
 });
-

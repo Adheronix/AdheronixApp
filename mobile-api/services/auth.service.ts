@@ -27,8 +27,13 @@ export const authService = {
   },
 
   async logout() {
-    await deleteItemAsync('userToken');
-    await deleteItemAsync('userData');
+    await Promise.all([
+      deleteItemAsync('userToken'),
+      deleteItemAsync('userData'),
+      deleteItemAsync('access_token'),
+      deleteItemAsync('patient'),
+      deleteItemAsync('user'),
+    ]);
   },
 
   async isAuthenticated() {

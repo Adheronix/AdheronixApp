@@ -161,9 +161,10 @@ export class MiniMaxOrchestratorService {
     }
 
     try {
-      const model = this.openRouter.getModelConfig(
+      const model = this.openRouter.resolveModel(
         'MINIMAX_MODEL',
         'minimax/minimax-m2.5:free',
+        'llama-3.3-70b-versatile',
       );
 
       const contextSummary = JSON.stringify({

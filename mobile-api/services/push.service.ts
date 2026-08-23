@@ -1,5 +1,19 @@
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import api from './api';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+async function loadNotifications(): Promise<NotificationsModule | null> {
+  if (Constants.appOwnership === 'expo') {
+    return null;
+  }
+
+  try {
+    return await import('expo-notifications');
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Registers the device for push notifications and sends the Expo push token
@@ -8,6 +22,11 @@ import api from './api';
  * Call this after login/signup and optionally on app start.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  const Notifications = await loadNotifications();
+  if (!Notifications) {
+    return null;
+  }
+
   // Only run on native devices
   // On web this will no-op and return null.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

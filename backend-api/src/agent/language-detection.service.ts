@@ -60,9 +60,20 @@ export class LanguageDetectionService {
     ];
 
     const lowerText = trimmed.toLowerCase();
-    const frenchScore = frenchIndicators.filter((word) =>
-      lowerText.includes(word),
-    ).length;
+
+    // Count indicators only when they appear as whole words/phrases to avoid
+    // false positives from English words containing short substrings (e.g. "i" inside "hi").
+    const countIndicators = (indicators: string[]) =>
+      indicators.filter((indicator) => {
+        const escaped = indicator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern =
+          indicator.includes(' ') || indicator.length > 2
+            ? `(?:^|[^a-zÀ-ÿ])${escaped}(?:[^a-zÀ-ÿ]|$)`
+            : `\\b${escaped}\\b`;
+        return new RegExp(pattern, 'i').test(lowerText);
+      }).length;
+
+    const frenchScore = countIndicators(frenchIndicators);
 
     const kinyarwandaIndicators = [
       'ni',
@@ -100,9 +111,7 @@ export class LanguageDetectionService {
       'mwene',
     ];
 
-    const kinyarwandaScore = kinyarwandaIndicators.filter((word) =>
-      lowerText.includes(word),
-    ).length;
+    const kinyarwandaScore = countIndicators(kinyarwandaIndicators);
 
     if (
       kinyarwandaScore >= 2 ||
@@ -124,9 +133,10 @@ export class LanguageDetectionService {
     }
 
     try {
-      const model = this.openRouter.getModelConfig(
+      const model = this.openRouter.resolveModel(
         'LANG_DETECT_MODEL',
         'meta-llama/llama-3.2-3b-instruct:free',
+        'llama-3.1-8b-instant',
       );
 
       const response = await this.openRouter.chatCompletion(

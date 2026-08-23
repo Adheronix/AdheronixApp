@@ -50,7 +50,10 @@ export default function AiScreen() {
 
         try {
             const apiMessages = buildMessagesForApi(updatedHistory);
-            const response = await api.post("/ai/chat", { messages: apiMessages });
+            const response = await api.post("/agent/chat", {
+                message: userMsg.text,
+                history: apiMessages.slice(0, -1),
+            });
             const botText =
                 response.data?.message?.trim() ||
                 "I apologize, but I was unable to process your request. Please try again.";

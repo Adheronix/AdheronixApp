@@ -75,8 +75,9 @@ export class AiController {
     @Body() body: ChatRequestDto,
   ): Promise<ChatResponseDto> {
     const model =
+      this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
       this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
-      'nousresearch/hermes-3-llama-3.1-405b:free';
+      'llama-3.3-70b-versatile';
 
     let contextMessage = '';
     if (body.patient_context !== false) {

@@ -64,9 +64,10 @@ export class RagService implements OnModuleInit {
       return 0;
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'EMBEDDING_MODEL',
       'nvidia/llama-nemotron-embed-vl-1b-v2:free',
+      'nomic-embed-text-v1.5',
     );
 
     let stored = 0;

@@ -12,9 +12,10 @@ export class QwenKinyarwandaService {
       return this.simpleTranslateToEnglish(kinyarwandaText);
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'QWEN_KINYARWANDA_MODEL',
       'qwen/qwen3-next-80b-a3b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     try {
@@ -63,9 +64,10 @@ Respond with ONLY the English translation.`,
       return englishText;
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'QWEN_KINYARWANDA_MODEL',
       'qwen/qwen3-next-80b-a3b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     try {
@@ -111,9 +113,10 @@ Respond with ONLY the Kinyarwanda text.`,
       return englishText;
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'QWEN_KINYARWANDA_MODEL',
       'qwen/qwen3-next-80b-a3b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     try {

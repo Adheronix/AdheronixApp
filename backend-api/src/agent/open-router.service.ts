@@ -51,7 +51,10 @@ export class OpenRouterService {
   constructor(private readonly configService: ConfigService) {}
 
   isConfigured(): boolean {
-    return Boolean(this.configService.get<string>('OPENROUTER_API_KEY'));
+    return Boolean(
+      this.configService.get<string>('GROQ_API_KEY') ||
+        this.configService.get<string>('OPENROUTER_API_KEY'),
+    );
   }
 
   async chatCompletion(
@@ -66,14 +69,13 @@ export class OpenRouterService {
       fallbackModels?: string[];
     } = {},
   ): Promise<ChatCompletionResponse> {
-    const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+    const provider = this.getProvider();
+    const apiKey = provider.apiKey;
     if (!apiKey) {
-      throw new Error('OPENROUTER_API_KEY is not configured');
+      throw new Error(`${provider.keyName} is not configured`);
     }
 
-    const baseUrl =
-      this.configService.get<string>('OPENROUTER_BASE_URL') ??
-      'https://openrouter.ai/api/v1';
+    const baseUrl = provider.baseUrl;
     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
     const timeoutMs = Number(
       this.configService.get<string>('AGENT_LLM_TIMEOUT_MS') ?? 30000,
@@ -109,7 +111,7 @@ export class OpenRouterService {
           endpoint,
           body,
           {
-            headers: this.getHeaders(apiKey),
+            headers: this.getHeaders(apiKey, provider.name),
             timeout: timeoutMs,
             family: 4,
           },
@@ -138,7 +140,7 @@ export class OpenRouterService {
           }
 
           throw new Error(
-            `OpenRouter request to ${candidateModel} failed with ${status}: ${this.extractErrorMessage(error)}`,
+            `${provider.name} request to ${candidateModel} failed with ${status}: ${this.extractErrorMessage(error)}`,
           );
         }
         throw error;
@@ -153,14 +155,13 @@ export class OpenRouterService {
     input: string | string[],
     options: { fallbackModels?: string[] } = {},
   ): Promise<EmbeddingResponse> {
-    const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+    const provider = this.getProvider();
+    const apiKey = provider.apiKey;
     if (!apiKey) {
-      throw new Error('OPENROUTER_API_KEY is not configured');
+      throw new Error(`${provider.keyName} is not configured`);
     }
 
-    const baseUrl =
-      this.configService.get<string>('OPENROUTER_BASE_URL') ??
-      'https://openrouter.ai/api/v1';
+    const baseUrl = provider.baseUrl;
     const endpoint = `${baseUrl.replace(/\/$/, '')}/embeddings`;
     const timeoutMs = Number(
       this.configService.get<string>('AGENT_LLM_TIMEOUT_MS') ?? 30000,
@@ -180,7 +181,7 @@ export class OpenRouterService {
             input,
           },
           {
-            headers: this.getHeaders(apiKey),
+            headers: this.getHeaders(apiKey, provider.name),
             timeout: timeoutMs,
             family: 4,
           },
@@ -197,7 +198,7 @@ export class OpenRouterService {
           }
 
           throw new Error(
-            `OpenRouter embedding request failed with ${status}: ${this.extractErrorMessage(error)}`,
+              `${provider.name} embedding request failed with ${status}: ${this.extractErrorMessage(error)}`,
           );
         }
         throw error;
@@ -211,11 +212,59 @@ export class OpenRouterService {
     return this.configService.get<string>(key) ?? defaultModel;
   }
 
-  private getHeaders(apiKey: string): Record<string, string> {
+  /**
+   * Resolves a model name that is appropriate for the configured provider.
+   * Use this when the caller supplies provider-specific defaults.
+   */
+  resolveModel(
+    key: string,
+    openRouterDefault: string,
+    groqDefault: string,
+  ): string {
+    const configured = this.configService.get<string>(key);
+    if (configured) {
+      return configured;
+    }
+
+    if (this.configService.get<string>('GROQ_API_KEY')) {
+      return groqDefault;
+    }
+
+    return openRouterDefault;
+  }
+
+  private getProvider() {
+    const groqApiKey = this.configService.get<string>('GROQ_API_KEY');
+    if (groqApiKey) {
+      return {
+        name: 'Groq',
+        keyName: 'GROQ_API_KEY',
+        apiKey: groqApiKey,
+        baseUrl:
+          this.configService.get<string>('GROQ_BASE_URL') ??
+          'https://api.groq.com/openai/v1',
+      };
+    }
+
+    return {
+      name: 'OpenRouter',
+      keyName: 'OPENROUTER_API_KEY',
+      apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
+      baseUrl:
+        this.configService.get<string>('OPENROUTER_BASE_URL') ??
+        'https://openrouter.ai/api/v1',
+    };
+  }
+
+  private getHeaders(apiKey: string, providerName: string): Record<string, string> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     };
+
+    if (providerName === 'Groq') {
+      return headers;
+    }
 
     const referer = this.configService.get<string>('OPENROUTER_HTTP_REFERER');
     const title =

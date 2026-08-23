@@ -17,9 +17,10 @@ export class LlamaFastService {
       return this.fallbackResponse(userMessage);
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'LLAMA_FAST_MODEL',
       'meta-llama/llama-3.3-70b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     const patientName = this.extractPatientName(context);
@@ -64,9 +65,10 @@ Adherence rate: ${context.adherence.weekly?.adherence_rate ?? 'unknown'}%`,
       return this.fallbackScheduleResponse(context);
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'LLAMA_FAST_MODEL',
       'meta-llama/llama-3.3-70b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     const upcomingToday = context.upcoming_today
@@ -114,9 +116,10 @@ Adherence rate: ${context.adherence.weekly?.adherence_rate ?? 'unknown'}%`,
       return this.defaultGreeting(context);
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'LLAMA_FAST_MODEL',
       'meta-llama/llama-3.3-70b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     const patientName = this.extractPatientName(context);
@@ -170,9 +173,10 @@ Health score trend: ${scoreTrend}`,
       return 'Great job taking your medication! Keep up the good work.';
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'LLAMA_FAST_MODEL',
       'meta-llama/llama-3.3-70b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     const streak = context.health_score?.streak_current ?? 0;
@@ -212,9 +216,10 @@ Health score trend: ${scoreTrend}`,
       return this.defaultNotificationCopy(type, context);
     }
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'LLAMA_FAST_MODEL',
       'meta-llama/llama-3.3-70b-instruct:free',
+      'llama-3.3-70b-versatile',
     );
 
     try {

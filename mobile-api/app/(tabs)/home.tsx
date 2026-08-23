@@ -67,6 +67,12 @@ export default function HomeScreen() {
         fetchData();
     };
 
+    const taken = status?.medications_taken_today || 0;
+    const pending = status?.medications_pending || 0;
+    const missed = status?.medications_missed || 0;
+    const total = status?.total_scheduled || 0;
+    const adherence = total > 0 ? Math.round((taken / total) * 100) : 0;
+
     if (loading) {
         return (
             <View style={[styles.container, styles.centered]}>
@@ -99,9 +105,7 @@ export default function HomeScreen() {
                     <Animated.View entering={FadeInUp.delay(100)} style={styles.mainCard}>
                         <View>
                             <Text style={styles.cardLabel}>Daily Adherence</Text>
-                            <Text style={styles.cardValue}>
-                                {Math.round(((status?.medications_taken_today || 0) / (status?.total_scheduled || 1)) * 100)}%
-                            </Text>
+                            <Text style={styles.cardValue}>{adherence}%</Text>
                         </View>
                         <VisualTrend color="#FFFFFF50" />
                     </Animated.View>
@@ -110,29 +114,29 @@ export default function HomeScreen() {
                     <View style={styles.grid}>
                         <Animated.View entering={FadeInUp.delay(200)} style={styles.module}>
                             <Text style={styles.moduleLabel}>Taken</Text>
-                            <Text style={styles.moduleValue}>{status?.medications_taken_today || 0}</Text>
+                            <Text style={styles.moduleValue}>{taken}</Text>
                         </Animated.View>
 
                         <Animated.View entering={FadeInUp.delay(300)} style={styles.module}>
                             <Text style={styles.moduleLabel}>Pending</Text>
                             <Text style={[styles.moduleValue, { color: '#64748B' }]}>
-                                {Math.max(0, (status?.total_scheduled || 0) - (status?.medications_taken_today || 0))}
+                                {pending}
                             </Text>
                         </Animated.View>
 
                         <Animated.View entering={FadeInUp.delay(400)} style={styles.module}>
-                            <Text style={styles.moduleLabel}>Heart Rate</Text>
+                            <Text style={styles.moduleLabel}>Missed</Text>
                             <View style={styles.dataRow}>
-                                <Text style={styles.moduleValue}>72</Text>
-                                <Text style={styles.unit}>bpm</Text>
+                                <Text style={styles.moduleValue}>{missed}</Text>
+                                <Text style={styles.unit}>doses</Text>
                             </View>
                         </Animated.View>
 
                         <Animated.View entering={FadeInUp.delay(500)} style={styles.module}>
-                            <Text style={styles.moduleLabel}>Sleep</Text>
+                            <Text style={styles.moduleLabel}>Scheduled</Text>
                             <View style={styles.dataRow}>
-                                <Text style={styles.moduleValue}>7.5</Text>
-                                <Text style={styles.unit}>hrs</Text>
+                                <Text style={styles.moduleValue}>{total}</Text>
+                                <Text style={styles.unit}>today</Text>
                             </View>
                         </Animated.View>
                     </View>

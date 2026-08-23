@@ -11,6 +11,7 @@ import { NotificationModule } from './notification/notification.module';
 import { ensureDatabaseExists } from './database/ensure-database';
 import { AgentModule } from './agent/agent.module';
 import { HealthScoreModule } from './health-score/health-score.module';
+import { SmartboxModule } from './smartbox/smartbox.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { HealthScoreModule } from './health-score/health-score.module';
     NotificationModule,
     AgentModule,
     HealthScoreModule,
+    SmartboxModule,
   ],
   controllers: [AppController],
   providers: [AppService],

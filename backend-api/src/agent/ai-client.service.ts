@@ -39,15 +39,16 @@ export class AiClientService {
   constructor(private readonly configService: ConfigService) {}
 
   isConfigured() {
-    return Boolean(this.configService.get<string>('OPENROUTER_API_KEY'));
+    return Boolean(
+      this.configService.get<string>('GROQ_API_KEY') ||
+        this.configService.get<string>('OPENROUTER_API_KEY'),
+    );
   }
 
   async screenPatientContext(
     context: AgentPatientContext,
   ): Promise<MonitorScreening> {
-    const model =
-      this.configService.get<string>('OPENROUTER_MONITOR_MODEL') ??
-      'qwen/qwen3-next-80b-a3b-instruct:free';
+    const model = this.getModelName('monitor');
 
     const response = await this.createChatCompletion({
       model,
@@ -88,9 +89,7 @@ export class AiClientService {
   async createPrimaryDecision(
     context: AgentPatientContext,
   ): Promise<DoctorDecision> {
-    const model =
-      this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
-      'nousresearch/hermes-3-llama-3.1-405b:free';
+    const model = this.getModelName('primary');
 
     const response = await this.createChatCompletion({
       model,
@@ -126,26 +125,26 @@ export class AiClientService {
   async createChatCompletion(
     body: Record<string, unknown>,
   ): Promise<ChatCompletionResponse> {
-    const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+    const provider = this.getProvider();
+    const apiKey = provider.apiKey;
     if (!apiKey) {
-      throw new Error('OPENROUTER_API_KEY is not configured');
+      throw new Error(`${provider.keyName} is not configured`);
     }
 
-    const baseUrl =
-      this.configService.get<string>('OPENROUTER_BASE_URL') ??
-      'https://openrouter.ai/api/v1';
+    const baseUrl = provider.baseUrl;
     const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
     const timeoutMs = Number(
       this.configService.get<string>('AGENT_LLM_TIMEOUT_MS') ?? 30000,
     );
 
+    const requestedModel =
+      typeof body.model === 'string' ? body.model : undefined;
     const fallbackModels = [
-      this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
-        'baidu/cobuddy:free',
-      'baidu/cobuddy:free',
-      'poolside/laguna-xs.2:free',
-      'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-    ];
+      requestedModel,
+      ...provider.models,
+    ].filter((model, index, models): model is string =>
+      Boolean(model) && models.indexOf(model) === index,
+    );
 
     let lastError: Error | null = null;
 
@@ -155,7 +154,7 @@ export class AiClientService {
           endpoint,
           { ...body, model },
           {
-            headers: this.getHeaders(apiKey),
+            headers: this.getHeaders(apiKey, provider.name),
             timeout: timeoutMs,
             family: 4, // Force IPv4 to avoid IPv6 timeout issues
           },
@@ -178,7 +177,7 @@ export class AiClientService {
           }
 
           throw new Error(
-            `OpenRouter request failed with ${status}: ${errorBody}`,
+              `${provider.name} request failed with ${status}: ${errorBody}`,
           );
         }
         throw error;
@@ -191,11 +190,67 @@ export class AiClientService {
     throw lastError ?? new Error('All fallback models failed');
   }
 
-  private getHeaders(apiKey: string): Record<string, string> {
+  private getProvider() {
+    const groqApiKey = this.configService.get<string>('GROQ_API_KEY');
+    if (groqApiKey) {
+      return {
+        name: 'Groq',
+        keyName: 'GROQ_API_KEY',
+        apiKey: groqApiKey,
+        baseUrl:
+          this.configService.get<string>('GROQ_BASE_URL') ??
+          'https://api.groq.com/openai/v1',
+        models: [
+          this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
+            'llama-3.3-70b-versatile',
+          this.configService.get<string>('GROQ_MONITOR_MODEL') ??
+            'llama-3.1-8b-instant',
+        ],
+      };
+    }
+
+    return {
+      name: 'OpenRouter',
+      keyName: 'OPENROUTER_API_KEY',
+      apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
+      baseUrl:
+        this.configService.get<string>('OPENROUTER_BASE_URL') ??
+        'https://openrouter.ai/api/v1',
+      models: [
+        this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
+          'baidu/cobuddy:free',
+        'baidu/cobuddy:free',
+        'poolside/laguna-xs.2:free',
+        'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+      ],
+    };
+  }
+
+  private getModelName(kind: 'primary' | 'monitor') {
+    if (this.configService.get<string>('GROQ_API_KEY')) {
+      return kind === 'primary'
+        ? (this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
+            'llama-3.3-70b-versatile')
+        : (this.configService.get<string>('GROQ_MONITOR_MODEL') ??
+            'llama-3.1-8b-instant');
+    }
+
+    return kind === 'primary'
+      ? (this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
+          'baidu/cobuddy:free')
+      : (this.configService.get<string>('OPENROUTER_MONITOR_MODEL') ??
+          'qwen/qwen3-next-80b-a3b-instruct:free');
+  }
+
+  private getHeaders(apiKey: string, providerName: string): Record<string, string> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     };
+
+    if (providerName === 'Groq') {
+      return headers;
+    }
 
     const referer = this.configService.get<string>('OPENROUTER_HTTP_REFERER');
     const title =

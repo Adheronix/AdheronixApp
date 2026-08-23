@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     PanResponder,
@@ -16,6 +16,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scheduleService } from "../../services/schedule.service";
 import { notificationService } from "../../services/notification.service";
+import { smartboxService, SmartboxEvent } from "../../services/smartbox.service";
+
+const SMARTBOX_POLL_MS = 10000;
 
 export default function IotScreen() {
     const router = useRouter();
@@ -26,6 +29,9 @@ export default function IotScreen() {
     const [batteryLevel, setBatteryLevel] = useState(69);
     const [barWidth, setBarWidth] = useState(0);
     const [unreadCount, setUnreadCount] = useState<number>(0);
+    const [smartboxEvent, setSmartboxEvent] = useState<SmartboxEvent | null>(null);
+    const [currentSchedule, setCurrentSchedule] = useState<any | null>(null);
+    const [sendingDemoDose, setSendingDemoDose] = useState(false);
 
     const panResponder = React.useRef(
         PanResponder.create({
@@ -46,9 +52,15 @@ export default function IotScreen() {
         })
     ).current;
 
-    const fetchUsageData = async () => {
+    const fetchUsageData = useCallback(async () => {
         try {
-            const data = await scheduleService.getSchedules();
+            const [data, upcoming, count, latestSmartbox] = await Promise.all([
+                scheduleService.getSchedules(),
+                scheduleService.getUpcoming(),
+                notificationService.getUnreadCount(),
+                smartboxService.getLatest(),
+            ]);
+
             // Map backend data to UI format
             const mappedData = data
                 .filter((item: any) => item.status === 'taken')
@@ -64,23 +76,46 @@ export default function IotScreen() {
                     raw: item
                 }));
             setUsageData(mappedData.slice(0, 10)); // Just show recent 10
-            const count = await notificationService.getUnreadCount();
             setUnreadCount(count);
+            setSmartboxEvent(latestSmartbox);
+            setCurrentSchedule(upcoming?.[0] ?? null);
         } catch (error) {
             console.error("Failed to fetch usage data:", error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchUsageData();
-    }, []);
+        const interval = setInterval(fetchUsageData, SMARTBOX_POLL_MS);
+        return () => clearInterval(interval);
+    }, [fetchUsageData]);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchUsageData();
+        }, [fetchUsageData])
+    );
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchUsageData();
+    };
+
+    const handleSmartboxDemoDose = async () => {
+        if (sendingDemoDose) return;
+        setSendingDemoDose(true);
+        try {
+            const result = await smartboxService.sendDemoDose();
+            setSmartboxEvent(result.event);
+            await fetchUsageData();
+        } catch (error) {
+            console.error("Failed to send smartbox demo dose:", error);
+        } finally {
+            setSendingDemoDose(false);
+        }
     };
 
     const filteredUsageData = usageData.filter((item) => {
@@ -89,6 +124,45 @@ export default function IotScreen() {
         const query = searchQuery.toLowerCase();
         return medicationName.includes(query) || action.includes(query);
     });
+
+    const currentPrescription = currentSchedule?.prescription?.prescription?.[0] || currentSchedule?.prescription || {};
+    const scheduleMedicine = currentSchedule?.medication_name || currentPrescription?.name || currentPrescription?.medicine || "Medication";
+    const scheduleDosage = currentPrescription?.dosage || currentPrescription?.dose || "Dose";
+    const scheduleCondition = currentPrescription?.condition || currentPrescription?.diagnosis || "";
+    const schedulePillsRemaining = Number(
+        currentPrescription?.pillsRemaining ??
+        currentPrescription?.remainingPills ??
+        currentPrescription?.quantity ??
+        currentPrescription?.totalPills
+    );
+    const schedulePillWeightG = Number(currentPrescription?.pillWeightG ?? currentPrescription?.pill_weight_g);
+    const normalizeMedicine = (value?: string) => value?.trim().toLowerCase().replace(/\s+/g, " ") || "";
+    const rawSmartboxHasDose = smartboxEvent?.status !== 'waiting' && !!smartboxEvent?.eventId;
+    const smartboxMatchesSchedule = !currentSchedule
+        || !smartboxEvent?.medicine
+        || normalizeMedicine(smartboxEvent.medicine) === normalizeMedicine(scheduleMedicine);
+    const smartboxHasDose = rawSmartboxHasDose && smartboxMatchesSchedule;
+    const displayedPillsLeft = smartboxHasDose && typeof smartboxEvent?.pillsRemaining === "number"
+        ? smartboxEvent.pillsRemaining
+        : Number.isFinite(schedulePillsRemaining)
+            ? schedulePillsRemaining
+            : "N/A";
+    const displayedWeightLeft = smartboxHasDose && typeof smartboxEvent?.weightLeftG === "number"
+        ? `${smartboxEvent.weightLeftG.toFixed(1)}g`
+        : Number.isFinite(schedulePillsRemaining) && Number.isFinite(schedulePillWeightG)
+            ? `${(schedulePillsRemaining * schedulePillWeightG).toFixed(1)}g`
+            : "N/A";
+    const medboxTitle = smartboxHasDose
+        ? `${smartboxEvent?.medicine || "Medicine"} taken - Smart Box verified`
+        : currentSchedule
+            ? `${scheduleMedicine} loaded from backend`
+            : "Waiting for QR scan or Smart Box event";
+    const medboxMeta = smartboxHasDose
+        ? `Bin ${(smartboxEvent?.binIndex ?? 0) + 1} • ${smartboxEvent?.dosage || "Dose"} • ${smartboxEvent?.timestamp ? new Date(smartboxEvent.timestamp).toLocaleString() : "Synced"}`
+        : currentSchedule
+            ? `Bin 1 • ${scheduleDosage} • ${currentSchedule.scheduled_time} • ${currentSchedule.time_until}`
+            : "Scan a medication QR, then Wokwi will poll the backend schedule";
+    const medboxCondition = smartboxHasDose ? smartboxEvent?.condition : scheduleCondition;
 
     return (
         <SafeAreaView style={styles.container}>
@@ -132,7 +206,78 @@ export default function IotScreen() {
                     <Text style={styles.sectionTitle}>Connection Status</Text>
                     <View style={styles.connectionStatus}>
                         <View style={styles.dotBlack} />
-                        <Text style={styles.connectionText}>Connected</Text>
+                        <Text style={styles.connectionText}>
+                            {currentSchedule
+                                ? 'Backend schedule synced'
+                                : smartboxEvent?.status === 'waiting'
+                                    ? 'Waiting for Smart Box event'
+                                    : 'Connected'}
+                        </Text>
+                    </View>
+                </View>
+
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Smart Medbox Verification</Text>
+                    <View style={styles.smartboxCard}>
+                        <View style={styles.smartboxHeader}>
+                            <View style={[
+                                styles.smartboxStatusIcon,
+                                smartboxHasDose && smartboxEvent?.confirmed ? styles.smartboxStatusIconSuccess : styles.smartboxStatusIconIdle
+                            ]}>
+                                <Ionicons
+                                    name={smartboxHasDose && smartboxEvent?.confirmed ? "checkmark" : "hardware-chip-outline"}
+                                    size={22}
+                                    color={smartboxHasDose && smartboxEvent?.confirmed ? "#fff" : "#000"}
+                                />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.smartboxTitle}>
+                                    {medboxTitle}
+                                </Text>
+                                <Text style={styles.smartboxMeta}>
+                                    {medboxMeta}
+                                </Text>
+                                {!!medboxCondition && (
+                                    <Text style={styles.smartboxMeta}>{medboxCondition}</Text>
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={styles.smartboxStatsRow}>
+                            <View>
+                                <Text style={styles.smartboxStatLabel}>Pills left</Text>
+                                <Text style={styles.smartboxStatValue}>
+                                    {displayedPillsLeft}
+                                </Text>
+                            </View>
+                            <View>
+                                <Text style={styles.smartboxStatLabel}>Weight left</Text>
+                                <Text style={styles.smartboxStatValue}>
+                                    {displayedWeightLeft}
+                                </Text>
+                            </View>
+                            <View>
+                                <Text style={styles.smartboxStatLabel}>Score impact</Text>
+                                <Text style={styles.smartboxStatValue}>
+                                    {smartboxHasDose && smartboxEvent?.scoreImpact ? `+${smartboxEvent.scoreImpact}` : "0"}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[styles.smartboxButton, sendingDemoDose && { opacity: 0.6 }]}
+                            onPress={handleSmartboxDemoDose}
+                            disabled={sendingDemoDose}
+                        >
+                            {sendingDemoDose ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <>
+                                    <Ionicons name="pulse" size={18} color="#fff" />
+                                    <Text style={styles.smartboxButtonText}>Send test dose</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -164,7 +309,11 @@ export default function IotScreen() {
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Last sync time</Text>
-                    <Text style={styles.syncTime}>{usageData.length > 0 ? usageData[0].time : 'N/A'}</Text>
+                    <Text style={styles.syncTime}>
+                        {smartboxEvent?.receivedAt
+                            ? new Date(smartboxEvent.receivedAt).toLocaleTimeString()
+                            : usageData.length > 0 ? usageData[0].time : 'N/A'}
+                    </Text>
                 </View>
 
                 <View style={styles.section}>
@@ -324,6 +473,81 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#999',
         fontFamily: "Inter_400Regular",
+    },
+    smartboxCard: {
+        backgroundColor: '#fff',
+        borderRadius: 18,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: '#F0F0F0',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    smartboxHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 14,
+    },
+    smartboxStatusIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    smartboxStatusIconSuccess: {
+        backgroundColor: '#16A34A',
+    },
+    smartboxStatusIconIdle: {
+        backgroundColor: '#F1F5F9',
+    },
+    smartboxTitle: {
+        fontSize: 15,
+        color: '#111',
+        fontFamily: "Inter_700Bold",
+    },
+    smartboxMeta: {
+        fontSize: 12,
+        color: '#777',
+        fontFamily: "Inter_400Regular",
+        marginTop: 3,
+    },
+    smartboxStatsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#F0F0F0',
+    },
+    smartboxStatLabel: {
+        fontSize: 11,
+        color: '#999',
+        fontFamily: "Inter_400Regular",
+    },
+    smartboxStatValue: {
+        fontSize: 18,
+        color: '#111',
+        fontFamily: "Inter_700Bold",
+        marginTop: 2,
+    },
+    smartboxButton: {
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: '#000',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 4,
+    },
+    smartboxButtonText: {
+        color: '#fff',
+        fontSize: 14,
+        fontFamily: "Inter_700Bold",
     },
     batteryLabels: {
         flexDirection: 'row',

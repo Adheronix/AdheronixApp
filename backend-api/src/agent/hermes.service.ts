@@ -25,9 +25,10 @@ export class HermesService {
       5,
     );
 
-    const model = this.openRouter.getModelConfig(
+    const model = this.openRouter.resolveModel(
       'HERMES_MODEL',
       'nousresearch/hermes-3-llama-3.1-405b:free',
+      'llama-3.3-70b-versatile',
     );
 
     const medicationList = context.medications
