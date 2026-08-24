@@ -18,6 +18,7 @@ import { GetPatient } from '../auth/decorator/get-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Patient } from '../patient/patient.entity';
 import { DoseEventDto } from './dto/dose-event.dto';
+import { WeightReportDto } from './dto/weight-report.dto';
 import { SmartboxService } from './smartbox.service';
 
 interface OptionalAuthRequest extends Request {
@@ -42,6 +43,25 @@ export class SmartboxController {
   ) {
     this.smartboxService.validateDeviceToken(authorization);
     return this.smartboxService.recordDoseEvent(dto);
+  }
+
+  @Post('weight')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Receive live load-cell weight telemetry from ESP32 device',
+  })
+  receiveWeightReport(
+    @Body() dto: WeightReportDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    this.smartboxService.validateDeviceToken(authorization);
+    return this.smartboxService.recordWeightReport(dto);
+  }
+
+  @Get(':deviceId/weight/latest')
+  @ApiOperation({ summary: 'Latest load-cell reading reported by a device' })
+  getLatestWeight(@Param('deviceId') deviceId: string) {
+    return this.smartboxService.getLatestWeight(deviceId);
   }
 
   @UseGuards(JwtAuthGuard)

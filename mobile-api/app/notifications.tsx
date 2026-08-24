@@ -8,6 +8,7 @@ import {
     TouchableOpacity,
     View,
     ActivityIndicator,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationService, NotificationItem } from "../services/notification.service";
@@ -160,13 +161,12 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 24,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         color: "#000",
     },
     markReadText: {
         fontSize: 14,
         color: "#666",
-        fontFamily: "Inter_700Bold",
     },
     scrollContent: {
         padding: 20,
@@ -210,18 +210,16 @@ const styles = StyleSheet.create({
     },
     notifTitle: {
         fontSize: 16,
-        fontFamily: "Inter_700Bold",
+        fontWeight: "bold",
         color: "#000",
     },
     notifTime: {
         fontSize: 11,
         color: "#AAA",
-        fontFamily: "Inter_400Regular",
     },
     notifMessage: {
         fontSize: 14,
         color: "#666",
-        fontFamily: "Inter_400Regular",
         lineHeight: 18,
     },
     unreadDot: {

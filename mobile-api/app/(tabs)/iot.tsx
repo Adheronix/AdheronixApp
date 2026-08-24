@@ -12,6 +12,7 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { scheduleService } from "../../services/schedule.service";
@@ -405,7 +406,6 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: 14,
-        fontFamily: "Inter_400Regular",
         color: '#000',
     },
     searchIconContainer: {
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 28,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         marginBottom: 30,
         color: '#000',
         textTransform: 'capitalize',
@@ -454,7 +454,6 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         fontSize: 18,
-        fontFamily: "Inter_400Regular",
         color: '#333',
         marginBottom: 10,
     },
@@ -472,7 +471,6 @@ const styles = StyleSheet.create({
     connectionText: {
         fontSize: 13,
         color: '#999',
-        fontFamily: "Inter_400Regular",
     },
     smartboxCard: {
         backgroundColor: '#fff',
@@ -508,12 +506,11 @@ const styles = StyleSheet.create({
     smartboxTitle: {
         fontSize: 15,
         color: '#111',
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
     },
     smartboxMeta: {
         fontSize: 12,
         color: '#777',
-        fontFamily: "Inter_400Regular",
         marginTop: 3,
     },
     smartboxStatsRow: {
@@ -526,12 +523,11 @@ const styles = StyleSheet.create({
     smartboxStatLabel: {
         fontSize: 11,
         color: '#999',
-        fontFamily: "Inter_400Regular",
     },
     smartboxStatValue: {
         fontSize: 18,
         color: '#111',
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
         marginTop: 2,
     },
     smartboxButton: {
@@ -547,7 +543,7 @@ const styles = StyleSheet.create({
     smartboxButtonText: {
         color: '#fff',
         fontSize: 14,
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
     },
     batteryLabels: {
         flexDirection: 'row',
@@ -557,12 +553,10 @@ const styles = StyleSheet.create({
     batteryLabelGreen: {
         fontSize: 11,
         color: '#4CAF50',
-        fontFamily: "Inter_400Regular",
     },
     batteryLabelRed: {
         fontSize: 11,
         color: '#F44336',
-        fontFamily: "Inter_400Regular",
     },
     batteryBarWrapper: {
         height: 12,
@@ -592,7 +586,7 @@ const styles = StyleSheet.create({
         position: 'relative',
         fontSize: 12,
         color: '#4CAF50',
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
         textAlign: 'center',
         width: 30,
         marginTop: 5,
@@ -600,7 +594,6 @@ const styles = StyleSheet.create({
     syncTime: {
         fontSize: 14,
         color: '#666',
-        fontFamily: "Inter_400Regular",
     },
     snoozeOptions: {
         gap: 12,
@@ -613,12 +606,10 @@ const styles = StyleSheet.create({
     optionText: {
         fontSize: 14,
         color: '#666',
-        fontFamily: "Inter_400Regular",
     },
     usageSubtitle: {
         fontSize: 12,
         color: '#AAA',
-        fontFamily: "Inter_400Regular",
         marginBottom: 15,
     },
     usageCard: {
@@ -660,7 +651,6 @@ const styles = StyleSheet.create({
     usageActionText: {
         fontSize: 14,
         color: '#555',
-        fontFamily: "Inter_400Regular",
     },
     usageCardRight: {
         justifyContent: 'flex-end',
@@ -668,6 +658,5 @@ const styles = StyleSheet.create({
     usageTimestamp: {
         fontSize: 10,
         color: '#AAA',
-        fontFamily: "Inter_400Regular",
     },
 });

@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 28,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         color: "#000",
     },
     headerIcons: {
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     },
     sectionHeader: {
         fontSize: 24,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         marginBottom: 10,
         color: "#000",
     },
@@ -257,13 +257,11 @@ const styles = StyleSheet.create({
     infoLabel: {
         fontSize: 13,
         color: "#888",
-        fontFamily: "Inter_400Regular",
         marginBottom: 2,
     },
     infoValue: {
         fontSize: 16,
         color: "#000",
-        fontFamily: "Inter_400Regular",
     },
     toggleContainer: {
         marginTop: 10,
@@ -276,7 +274,6 @@ const styles = StyleSheet.create({
     },
     toggleText: {
         fontSize: 14,
-        fontFamily: "Inter_400Regular",
         color: "#666",
         letterSpacing: 0.5,
     },
@@ -295,6 +292,6 @@ const styles = StyleSheet.create({
     logoutText: {
         fontSize: 16,
         color: '#FF3B30',
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
     },
 });

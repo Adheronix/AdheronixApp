@@ -10,6 +10,7 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../services/auth.service";
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
         top: 40,
         fontSize: 24,
         color: "#fff",
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
         letterSpacing: 4,
     },
     formContainer: {
@@ -190,13 +191,12 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 28,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         textAlign: "center",
         marginBottom: 8,
     },
     subtitle: {
         fontSize: 14,
-        fontFamily: "Inter_400Regular",
         color: "#666",
         textAlign: "center",
         marginBottom: 30,
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
     },
     userNameText: {
         fontSize: 18,
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
         color: "#000",
     },
     inputGroup: {
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 14,
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
         color: "#333",
     },
     input: {
@@ -229,7 +229,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#eee",
         fontSize: 14,
-        fontFamily: "Inter_400Regular",
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
@@ -249,6 +248,6 @@ const styles = StyleSheet.create({
     buttonText: {
         color: "#fff",
         fontSize: 18,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
     },
 });

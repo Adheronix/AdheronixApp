@@ -212,18 +212,17 @@ const styles = StyleSheet.create({
     },
     speechText: {
         fontSize: 16,
-        fontFamily: "Inter_700Bold",
+        fontWeight: "bold",
     },
     welcomeTitle: {
         fontSize: 28,
-        fontFamily: "DMSerifDisplay_700Bold",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         marginBottom: 10,
     },
     welcomeSubtitle: {
         fontSize: 14,
         color: "#666",
         textAlign: "center",
-        fontFamily: "Inter_400Regular",
         marginBottom: 40,
     },
     inputContainer: {
@@ -239,7 +238,6 @@ const styles = StyleSheet.create({
     },
     input: {
         flex: 1,
-        fontFamily: "Inter_400Regular",
     },
     sendButton: {
         width: 36,
@@ -260,7 +258,7 @@ const styles = StyleSheet.create({
     },
     chatTitle: {
         fontSize: 18,
-        fontFamily: "Inter_700Bold",
+        fontWeight: "bold",
     },
     chatScroll: {
         padding: 20,
@@ -291,12 +289,10 @@ const styles = StyleSheet.create({
     botText: {
         fontSize: 14,
         color: "#333",
-        fontFamily: "Inter_400Regular",
     },
     userText: {
         fontSize: 14,
         color: "#fff",
-        fontFamily: "Inter_400Regular",
     },
     footerInput: {
         flexDirection: "row",
@@ -313,7 +309,6 @@ const styles = StyleSheet.create({
         height: 45,
         borderRadius: 22,
         paddingHorizontal: 20,
-        fontFamily: "Inter_400Regular",
         borderWidth: 1,
         borderColor: "#ccc",
     },

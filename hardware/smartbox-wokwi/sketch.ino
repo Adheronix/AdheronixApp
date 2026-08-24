@@ -1,716 +1,142 @@
 /*
  * ============================================================
- *  ADELONIX SMART BOX - Wokwi Integrated Demo Firmware v3.5
- *  ESP32-S3 | HX711 | E-Paper | AI Noise Filter | WiFi | HTTP
- * ============================================================
+ *  ADELONIX SMART BOX - FIXED DISPLAY FIRMWARE
+ *  ESP32-S3 | ILI9341 | WiFi | HTTP GET -> TFT
  *
- * Demo flow:
- * 1. ESP32 connects to WiFi and blinks the status LED.
- * 2. Press the green button to simulate one pill being removed.
- * 3. Firmware filters noisy HX711 readings with median + Kalman filtering.
- * 4. It blinks/beeps and sends a verified event to the Nest backend.
- * 5. Mobile IoT tab reads /api/smartbox/latest and displays the event.
+ *  Fix applied:
+ *   - Removed the GFXcanvas16 + per-pixel fillRect() blit path.
+ *     That approach issued thousands of tiny 1px SPI writes per
+ *     line of text, which is what corrupted the middle of the
+ *     screen in Velxio's ILI9341 emulation.
+ *   - Dropped the smooth fonts (FreeSans*) for body text as well;
+ *     everything now renders with the classic built-in bitmap
+ *     font via tft.setFont() + tft.print(), the same reliable
+ *     path that was already rendering the header/footer.
+ *   - Kept the staged paint-job queue (one job per loop tick) so
+ *     SPI traffic is still spread out and each job stays logged.
+ *   - Restored the LED/buzzer/button feedback that was lost in the
+ *     display rewrite: GPIO40 LED, GPIO39 buzzer, GPIO38 button
+ *     (INPUT_PULLUP). Button press = one pill removed + POST
+ *     /api/smartbox/dose-event to the backend.
+ * ============================================================
  */
 
 #include <WiFi.h>
-#include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <SPI.h>
-
-// Browser demo: no external libraries. The e-paper is driven directly over SPI.
-
-// ============== MODE ==============
-const bool IS_SIMULATION = true;
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
 
 // ============== WIFI / BACKEND ==============
-const char* WIFI_SSID = "Wokwi-GUEST";
+const char* WIFI_SSID = "Velxio-GUEST";
 const char* WIFI_PASSWORD = "";
-const char* API_BASE_URL = "https://wild-guests-win.loca.lt";
+// Velxio note: the emulated ESP32 reaches the internet via SLIRP NAT.
+// Plain HTTP works; TLS dies at handshake against some edges, so we
+// tunnel the local backend through a Cloudflare quick tunnel, which
+// serves PLAIN http:// with no redirect and no account needed:
+//   /tmp/opencode/bin/cloudflared tunnel --url http://127.0.0.1:3000
+// Copy the printed https://xxx.trycloudflare.com URL below but keep
+// the http:// scheme. Quick-tunnel URLs change on every restart --
+// paste the fresh one here each time. On real hardware you can switch
+// back to ngrok https + WiFiClientSecure if you want encryption.
+const char* API_BASE_URL = "http://reveals-fix-car-residents.trycloudflare.com";
 const char* DEVICE_ID = "SMARTBOX-0001";
 const char* API_KEY = "change-me-smartbox-device-token";
 
-// ============== PIN MAP ==============
+// ============== TFT PINS ==============
+const int TFT_CS = 10;
+const int TFT_DC = 11;
+const int TFT_RST = 12;
+const int TFT_SCK = 14;
+const int TFT_MOSI = 21;
+const int TFT_MISO = 13;
+
+// ============== LED / BUZZER / BUTTON PINS ==============
+// Matches diagram.json wiring:
+//   led1  -> 220R -> GPIO40 (active HIGH), cathode -> GND
+//   bz1:2 -> GPIO39 (tone pin)
+//   btn1  -> GPIO38, other leg -> GND (active LOW, needs pull-up)
+const int PIN_LED = 40;
+const int PIN_BUZZER = 39;
+const int PIN_BUTTON = 38;
+
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
+bool displayReady = false;
+bool netOk = false;
+
+// ============== COLOR PALETTE ==============
+const uint16_t COL_BG     = 0x0883;
+const uint16_t COL_CARD   = 0x1906;
+const uint16_t COL_TEAL   = 0x0698;
+const uint16_t COL_GREEN  = 0x46F0;
+const uint16_t COL_AMBER  = 0xFD45;
+const uint16_t COL_RED    = 0xFA8A;
+const uint16_t COL_WHITE  = 0xFFFF;
+const uint16_t COL_GRAY   = 0x94F6;
+
+// ============== DATA FROM BACKEND ==============
+char medName[40] = "-";
+char medDosage[24] = "-";
+char medCondition[40] = "-";
+char medTime[12] = "--:--";
+int pillsRemaining = -1;
+int totalPills = 0;
+float pillWeightG = 5.0;
+
+char lineCond[72] = "";
+char lineNum[64] = "";
+char lastDrawnHash[160] = "";
+
+// ---- backend clock / dose slot tracking ----
+// The backend stamps every schedule payload with its own date/time,
+// so no NTP is needed: we anchor a soft clock at each fetch.
+char serverDate[12] = "";     // YYYY-MM-DD at fetch time
+int serverMinAtFetch = -1;    // minutes-of-day at fetch time
+unsigned long fetchAnchorMs = 0;
+char schedDate[12] = "";      // date the displayed dose is scheduled for
+int schedMinutes = -1;        // scheduledTime as minutes-of-day
+bool doseTakenToday = false;
+
+unsigned long lastFetch = 0;
+unsigned long lastWifiTry = 0;
+WiFiClient apiClient;   // plain TCP; see API_BASE_URL note above for https
+
+bool eventInFlight = false;   // one dose event at a time
+
+// ============== LOAD CELL / WEIGHT MODEL ==============
+// diagram.json: cell1:DT -> GPIO16, cell1:SCK -> GPIO17.
+// Velxio emulates the HX711, so the raw reading is driven from the
+// Serial Monitor console (see handleSerial). On real hardware,
+// readBinWeightG() is the only function you replace with a proper
+// HX711 library call -- everything else already works off it.
+
 const int HX_DT = 16;
 const int HX_SCK = 17;
-const int PIN_BUTTON = 38;
-const int PIN_BUZZER = 39;
-const int PIN_LED = 40;
 
-const int EPD_CS = 10;
-const int EPD_DC = 11;
-const int EPD_RST = 12;
-const int EPD_BUSY = 13;
-const int EPD_SCK = 14;
-const int EPD_MOSI = 21;
+float simBinG = 0;        // current load-cell reading (grams)
+float tareOffsetG = 0;    // TARE command offset
+float baselineG = 0;      // reference weight for intake detection
+bool baselineValid = false;
+bool scaleReady = false;  // true once first schedule sync anchors the bin
 
-// ============== TUNABLES ==============
-const float PILL_WEIGHT_G = 5.0;
-const float INITIAL_WEIGHT_G = 50.0;
-const float DOSE_DROP_THRESHOLD_G = 2.0;
-const int FILTER_WINDOW_SIZE = 7;
+unsigned long lastTelemetry = 0;
+unsigned long nextReminderBeep = 0;
+bool reminderActive = false;
+char remindedSlot[24] = "";   // "date|HH:MM" we already alarmed for
 
-// ============== MEDICINE IN THE BOX ==============
-struct Medicine {
-  String name;
-  String dosage;
-  String condition;
-  String scheduledTime;
-  int binIndex;
-  float pillWeightG;
-  int totalPills;
-  int remainingPills;
-};
-
-Medicine binMedicine = {
-  "Syncing",
-  "backend",
-  "Waiting schedule",
-  "--:--",
-  0,
-  PILL_WEIGHT_G,
-  0,
-  0,
-};
-
-bool displayReady = false;
-
-const int EPD_RAW_WIDTH = 128;
-const int EPD_RAW_HEIGHT = 296;
-const int EPD_VIEW_WIDTH = 296;
-const int EPD_VIEW_HEIGHT = 128;
-const int EPD_BUFFER_SIZE = EPD_RAW_WIDTH * EPD_RAW_HEIGHT / 8;
-uint8_t epdBuffer[EPD_BUFFER_SIZE];
-
-class AINoiseFilter {
-  private:
-    float estimate = INITIAL_WEIGHT_G;
-    float errorEstimate = 1.0;
-    float processNoise = 0.01;
-    float sensorNoise = 2.0;
-    float readings[15] = {0};
-    int index = 0;
-
-  public:
-    void reset(float initial) {
-      estimate = initial;
-      errorEstimate = 1.0;
-      index = 0;
-      for (int i = 0; i < 15; i++) readings[i] = 0;
-    }
-
-    float kalmanUpdate(float measurement) {
-      float predictionError = errorEstimate + processNoise;
-      float kalmanGain = predictionError / (predictionError + sensorNoise);
-      estimate = estimate + kalmanGain * (measurement - estimate);
-      errorEstimate = (1 - kalmanGain) * predictionError;
-      return estimate;
-    }
-
-    float medianFilter(float newReading) {
-      readings[index] = newReading;
-      index = (index + 1) % FILTER_WINDOW_SIZE;
-
-      float sorted[FILTER_WINDOW_SIZE];
-      int count = 0;
-      for (int i = 0; i < FILTER_WINDOW_SIZE; i++) {
-        if (readings[i] > 0.01) sorted[count++] = readings[i];
-      }
-      if (count == 0) return newReading;
-
-      for (int i = 0; i < count - 1; i++) {
-        for (int j = 0; j < count - i - 1; j++) {
-          if (sorted[j] > sorted[j + 1]) {
-            float temp = sorted[j];
-            sorted[j] = sorted[j + 1];
-            sorted[j + 1] = temp;
-          }
-        }
-      }
-      return sorted[count / 2];
-    }
-
-    float process(float raw) {
-      return kalmanUpdate(medianFilter(raw));
-    }
-};
-
-AINoiseFilter aiFilter;
-
-float baselineWeight = INITIAL_WEIGHT_G;
-float currentWeight = INITIAL_WEIGHT_G;
-float simulatedWeight = INITIAL_WEIGHT_G;
-bool scaleReady = false;
-bool eventInFlight = false;
-WiFiClientSecure secureClient;
-bool scheduleSynced = false;
-unsigned long lastScheduleSync = 0;
-
-const uint8_t* glyphFor(char raw) {
-  static const uint8_t blank[5] = {0, 0, 0, 0, 0};
-  static const uint8_t glyphs[][5] = {
-    {0x7E, 0x11, 0x11, 0x11, 0x7E}, // A
-    {0x7F, 0x49, 0x49, 0x49, 0x36}, // B
-    {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
-    {0x7F, 0x41, 0x41, 0x22, 0x1C}, // D
-    {0x7F, 0x49, 0x49, 0x49, 0x41}, // E
-    {0x7F, 0x09, 0x09, 0x09, 0x01}, // F
-    {0x3E, 0x41, 0x49, 0x49, 0x7A}, // G
-    {0x7F, 0x08, 0x08, 0x08, 0x7F}, // H
-    {0x00, 0x41, 0x7F, 0x41, 0x00}, // I
-    {0x20, 0x40, 0x41, 0x3F, 0x01}, // J
-    {0x7F, 0x08, 0x14, 0x22, 0x41}, // K
-    {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
-    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, // M
-    {0x7F, 0x04, 0x08, 0x10, 0x7F}, // N
-    {0x3E, 0x41, 0x41, 0x41, 0x3E}, // O
-    {0x7F, 0x09, 0x09, 0x09, 0x06}, // P
-    {0x3E, 0x41, 0x51, 0x21, 0x5E}, // Q
-    {0x7F, 0x09, 0x19, 0x29, 0x46}, // R
-    {0x46, 0x49, 0x49, 0x49, 0x31}, // S
-    {0x01, 0x01, 0x7F, 0x01, 0x01}, // T
-    {0x3F, 0x40, 0x40, 0x40, 0x3F}, // U
-    {0x1F, 0x20, 0x40, 0x20, 0x1F}, // V
-    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
-    {0x63, 0x14, 0x08, 0x14, 0x63}, // X
-    {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
-    {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
-    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
-    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
-    {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
-    {0x21, 0x41, 0x45, 0x4B, 0x31}, // 3
-    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
-    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
-    {0x3C, 0x4A, 0x49, 0x49, 0x30}, // 6
-    {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
-    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
-    {0x06, 0x49, 0x49, 0x29, 0x1E}, // 9
-    {0x00, 0x36, 0x36, 0x00, 0x00}, // :
-    {0x08, 0x08, 0x3E, 0x08, 0x08}, // +
-    {0x08, 0x08, 0x08, 0x08, 0x08}, // -
-    {0x40, 0x30, 0x08, 0x06, 0x01}, // /
-    {0x00, 0x60, 0x60, 0x00, 0x00}, // .
-  };
-
-  char c = raw;
-  if (c >= 'a' && c <= 'z') c -= 32;
-  if (c >= 'A' && c <= 'Z') return glyphs[c - 'A'];
-  if (c >= '0' && c <= '9') return glyphs[26 + c - '0'];
-  if (c == ':') return glyphs[36];
-  if (c == '+') return glyphs[37];
-  if (c == '-') return glyphs[38];
-  if (c == '/') return glyphs[39];
-  if (c == '.') return glyphs[40];
-  return blank;
+float readBinWeightG() {
+  return simBinG - tareOffsetG;
 }
 
-void epdCommand(uint8_t command) {
-  digitalWrite(EPD_DC, LOW);
-  digitalWrite(EPD_CS, LOW);
-  SPI.transfer(command);
-  digitalWrite(EPD_CS, HIGH);
+int pillsEstFromWeight() {
+  return max(0, (int)((readBinWeightG() / pillWeightG) + 0.5));
 }
 
-void epdData(uint8_t data) {
-  digitalWrite(EPD_DC, HIGH);
-  digitalWrite(EPD_CS, LOW);
-  SPI.transfer(data);
-  digitalWrite(EPD_CS, HIGH);
-}
-
-void epdWait() {
-  unsigned long start = millis();
-  while (digitalRead(EPD_BUSY) == HIGH && millis() - start < 5000) {
-    delay(10);
-  }
-}
-
-void epdReset() {
-  digitalWrite(EPD_RST, LOW);
-  delay(20);
-  digitalWrite(EPD_RST, HIGH);
-  delay(20);
-}
-
-void epdSetWindowAndCursor() {
-  epdCommand(0x44);
-  epdData(0x00);
-  epdData((EPD_RAW_WIDTH / 8) - 1);
-  epdCommand(0x45);
-  epdData(0x00);
-  epdData(0x00);
-  epdData((EPD_RAW_HEIGHT - 1) & 0xFF);
-  epdData(((EPD_RAW_HEIGHT - 1) >> 8) & 0xFF);
-  epdCommand(0x4E);
-  epdData(0x00);
-  epdCommand(0x4F);
-  epdData(0x00);
-  epdData(0x00);
-  epdWait();
-}
-
-void epdClearBuffer() {
-  memset(epdBuffer, 0xFF, sizeof(epdBuffer));
-}
-
-void epdRawPixel(int x, int y, bool black) {
-  if (x < 0 || x >= EPD_RAW_WIDTH || y < 0 || y >= EPD_RAW_HEIGHT) return;
-  int index = (x / 8) + y * (EPD_RAW_WIDTH / 8);
-  uint8_t mask = 0x80 >> (x % 8);
-  if (black) {
-    epdBuffer[index] &= ~mask;
-  } else {
-    epdBuffer[index] |= mask;
-  }
-}
-
-void epdPixel(int x, int y, bool black) {
-  if (x < 0 || x >= EPD_VIEW_WIDTH || y < 0 || y >= EPD_VIEW_HEIGHT) return;
-
-  // The 2.9" Wokwi e-paper memory is 128x296, while the module is shown
-  // landscape. Rotate the app's 296x128 layout into the panel memory.
-  int rawX = EPD_RAW_WIDTH - 1 - y;
-  int rawY = x;
-  epdRawPixel(rawX, rawY, black);
-}
-
-void epdRect(int x, int y, int w, int h, bool black) {
-  for (int yy = y; yy < y + h; yy++) {
-    for (int xx = x; xx < x + w; xx++) {
-      epdPixel(xx, yy, black);
-    }
-  }
-}
-
-void epdFrame(int x, int y, int w, int h) {
-  epdRect(x, y, w, 2, true);
-  epdRect(x, y + h - 2, w, 2, true);
-  epdRect(x, y, 2, h, true);
-  epdRect(x + w - 2, y, 2, h, true);
-}
-
-void epdChar(int x, int y, char c, int scale) {
-  const uint8_t* glyph = glyphFor(c);
-  for (int col = 0; col < 5; col++) {
-    for (int row = 0; row < 7; row++) {
-      if (glyph[col] & (1 << row)) {
-        epdRect(x + col * scale, y + row * scale, scale, scale, true);
-      }
-    }
-  }
-}
-
-void epdText(int x, int y, const char* text, int scale) {
-  int cursor = x;
-  int step = 6 * scale;
-  while (*text && cursor < EPD_VIEW_WIDTH - step) {
-    epdChar(cursor, y, *text, scale);
-    cursor += step;
-    text++;
-  }
-}
-
-void epdRefresh() {
-  epdSetWindowAndCursor();
-  epdCommand(0x24);
-  for (int i = 0; i < EPD_BUFFER_SIZE; i++) {
-    epdData(epdBuffer[i]);
-  }
-  epdCommand(0x22);
-  epdData(0xF7);
-  epdCommand(0x20);
-  epdWait();
-}
-
-void setup() {
-  Serial.begin(115200);
-  delay(500);
-
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
-  pinMode(PIN_LED, OUTPUT);
-  pinMode(PIN_BUZZER, OUTPUT);
-  digitalWrite(PIN_LED, LOW);
-
-  aiFilter.reset(INITIAL_WEIGHT_G);
-  initDisplay();
-  updateDisplay("Adelonix", "Booting", "Smart Medbox");
-  bootFeedback();
-
-  scaleReady = false;
-  Serial.println("HX711 browser simulation active");
-
-  Serial.println();
-  Serial.println("========================================");
-  Serial.println(" ADELONIX SMART BOX - INTEGRATED DEMO");
-  Serial.println(" Button: GPIO38 | LED: GPIO40 | Buzzer: GPIO39");
-  Serial.println(" Press green button to remove one pill");
-  Serial.println("========================================");
-
-  connectWiFi();
-  fetchBackendSchedule();
-  drawMedicineSchedule();
-}
-
-void loop() {
-  unsigned long syncInterval = scheduleSynced ? 60000 : 15000;
-  if (WiFi.status() == WL_CONNECTED && millis() - lastScheduleSync > syncInterval) {
-    fetchBackendSchedule();
-    drawMedicineSchedule();
-  }
-
-  if (digitalRead(PIN_BUTTON) == LOW && !eventInFlight) {
-    delay(200);
-    if (digitalRead(PIN_BUTTON) == LOW) {
-      simulatePillRemoval();
-      while (digitalRead(PIN_BUTTON) == LOW) delay(10);
-    }
-  }
-
-  float raw = readSensor();
-  currentWeight = aiFilter.process(raw);
-
-  static unsigned long lastPrint = 0;
-  if (millis() - lastPrint > 400) {
-    int pills = max(0, int((currentWeight / binMedicine.pillWeightG) + 0.5));
-    Serial.printf("[LIVE] Bin 1 %s %s | Raw:%5.1fg | AI:%5.1fg | Pills:%2d | Label:%2d | Baseline:%5.1fg\n",
-                  binMedicine.name.c_str(),
-                  binMedicine.dosage.c_str(),
-                  raw,
-                  currentWeight,
-                  pills,
-                  binMedicine.remainingPills,
-                  baselineWeight);
-    lastPrint = millis();
-  }
-
-  float drop = baselineWeight - currentWeight;
-  if (!eventInFlight && drop > DOSE_DROP_THRESHOLD_G) {
-    eventInFlight = true;
-    Serial.println();
-    Serial.println("AI DETECTION: real pill-weight drop confirmed");
-    Serial.printf("Drop %.1fg passed threshold %.1fg\n", drop, DOSE_DROP_THRESHOLD_G);
-    drawPendingDose();
-    alertFeedback();
-    sendDoseEvent(baselineWeight, currentWeight, true);
-    baselineWeight = currentWeight;
-    successFeedback();
-    drawDoseTaken();
-    delay(2500);
-    resetForNextDemo();
-  }
-
-  delay(100);
-}
-
-float readSensor() {
-  float jitter = random(-15, 16) / 10.0;
-  return max(0.0f, simulatedWeight + jitter);
-}
-
-void simulatePillRemoval() {
-  if (simulatedWeight < binMedicine.pillWeightG) return;
-  simulatedWeight -= binMedicine.pillWeightG;
-  if (binMedicine.remainingPills > 0) {
-    binMedicine.remainingPills--;
-  }
-  Serial.println();
-  Serial.printf("BUTTON: simulated one %s %s pill removed from bin 1\n",
-                binMedicine.name.c_str(),
-                binMedicine.dosage.c_str());
-  Serial.printf("Medicine label now shows %d pills remaining\n", binMedicine.remainingPills);
-  drawPendingDose();
-}
-
-String escapeJson(String value) {
-  value.replace("\\", "\\\\");
-  value.replace("\"", "\\\"");
-  return value;
-}
-
-String valueForKey(const String& text, const String& key) {
-  String needle = key + "=";
-  int start = text.indexOf(needle);
-  if (start < 0) return "";
-  start += needle.length();
-  int end = text.indexOf('\n', start);
-  if (end < 0) end = text.length();
-  String value = text.substring(start, end);
-  value.trim();
-  return value;
-}
-
-void applyScheduleValue(const String& text, const String& key, String& target) {
-  String value = valueForKey(text, key);
-  if (value.length() > 0) {
-    target = value.substring(0, 48);
-  }
-}
-
-void fetchBackendSchedule() {
-  lastScheduleSync = millis();
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Schedule sync skipped: WiFi offline");
-    updateDisplay("Schedule sync", "WiFi offline", "Retrying");
-    return;
-  }
-
-  HTTPClient http;
-  String url = String(API_BASE_URL) + "/api/smartbox/" + DEVICE_ID + "/schedule";
-  updateDisplay("Schedule sync", "Fetching backend", "Please wait");
-
-  secureClient.stop();
-  secureClient.setInsecure();
-  secureClient.setTimeout(20000);
-  http.begin(secureClient, url);
-  http.setTimeout(20000);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.useHTTP10(true);
-  http.addHeader("Authorization", String("Bearer ") + API_KEY);
-  http.addHeader("ngrok-skip-browser-warning", "true");
-  http.addHeader("bypass-tunnel-reminder", "true");
-  http.addHeader("User-Agent", "Adelonix-SmartBox-Wokwi");
-  int code = http.GET();
-  String response = http.getString();
-  http.end();
-
-  Serial.println();
-  Serial.println("--- SCHEDULE SYNC ---");
-  Serial.printf("GET %s -> %d\n", url.c_str(), code);
-  Serial.println(response);
-  Serial.println("--- END SCHEDULE ---");
-
-  if (code != 200) {
-    scheduleSynced = false;
-    char codeLine[32];
-    snprintf(codeLine, sizeof(codeLine), "HTTP code %d", code);
-    updateDisplay("Schedule failed", codeLine, "Retrying soon");
-    networkFailFeedback();
-    return;
-  }
-
-  applyScheduleValue(response, "medicine", binMedicine.name);
-  applyScheduleValue(response, "dosage", binMedicine.dosage);
-  applyScheduleValue(response, "condition", binMedicine.condition);
-  applyScheduleValue(response, "scheduledTime", binMedicine.scheduledTime);
-
-  int totalPills = valueForKey(response, "totalPills").toInt();
-  int pillsRemaining = valueForKey(response, "pillsRemaining").toInt();
-  float pillWeightG = valueForKey(response, "pillWeightG").toFloat();
-
-  if (totalPills > 0) binMedicine.totalPills = totalPills;
-  if (pillsRemaining >= 0) binMedicine.remainingPills = pillsRemaining;
-  if (pillWeightG > 0.1) binMedicine.pillWeightG = pillWeightG;
-
-  simulatedWeight = binMedicine.remainingPills * binMedicine.pillWeightG;
-  baselineWeight = simulatedWeight;
-  currentWeight = simulatedWeight;
-  aiFilter.reset(simulatedWeight);
-  scheduleSynced = true;
-  networkOkFeedback();
-}
-
-void sendDoseEvent(float weightBefore, float weightAfter, bool confirmed) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi disconnected - trying reconnect");
-    connectWiFi();
-  }
-
-  String payload = "{";
-  payload += "\"deviceId\":\"" + String(DEVICE_ID) + "\",";
-  payload += "\"binIndex\":0,";
-  payload += "\"medicine\":\"" + escapeJson(binMedicine.name) + "\",";
-  payload += "\"dosage\":\"" + escapeJson(binMedicine.dosage) + "\",";
-  payload += "\"condition\":\"" + escapeJson(binMedicine.condition) + "\",";
-  payload += "\"scheduledTime\":\"" + escapeJson(binMedicine.scheduledTime) + "\",";
-  payload += "\"timestamp\":\"" + String((unsigned long)(millis() / 1000)) + "\",";
-  payload += "\"confirmed\":" + String(confirmed ? "true" : "false") + ",";
-  payload += "\"verified\":" + String(confirmed ? "true" : "false") + ",";
-  payload += "\"weightBefore\":" + String(weightBefore, 1) + ",";
-  payload += "\"weightAfter\":" + String(weightAfter, 1) + ",";
-  payload += "\"weightLeftG\":" + String(weightAfter, 1) + ",";
-  payload += "\"pillsRemaining\":" + String(binMedicine.remainingPills) + ",";
-  payload += "\"scoreImpact\":" + String(confirmed ? 15 : 0);
-  payload += "}";
-
-  Serial.println();
-  Serial.println("--- NETWORK TRANSMISSION ---");
-  Serial.println(payload);
-
-  HTTPClient http;
-  secureClient.stop();
-  secureClient.setInsecure();
-  secureClient.setTimeout(20000);
-  http.begin(secureClient, String(API_BASE_URL) + "/api/smartbox/dose-event");
-  http.setTimeout(20000);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.useHTTP10(true);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", String("Bearer ") + API_KEY);
-  http.addHeader("ngrok-skip-browser-warning", "true");
-  http.addHeader("bypass-tunnel-reminder", "true");
-  http.addHeader("User-Agent", "Adelonix-SmartBox-Wokwi");
-  int code = http.POST(payload);
-  String response = http.getString();
-  http.end();
-
-  Serial.printf("HTTP status: %d\n", code);
-  Serial.println(response);
-  Serial.println("--- END ---");
-
-  if (code == 200 || code == 201) {
-    networkOkFeedback();
-  } else {
-    networkFailFeedback();
-  }
-}
-
-void connectWiFi() {
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting WiFi");
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    digitalWrite(PIN_LED, !digitalRead(PIN_LED));
-    delay(300);
-    Serial.print(".");
-  }
-  digitalWrite(PIN_LED, LOW);
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println();
-    Serial.print("WiFi connected | IP: ");
-    Serial.println(WiFi.localIP());
-    updateDisplay("WiFi connected", WiFi.localIP().toString().c_str(), "Ready");
-    networkOkFeedback();
-  } else {
-    Serial.println();
-    Serial.println("WiFi failed");
-    updateDisplay("WiFi failed", "Check Wokwi", "No sync");
-    networkFailFeedback();
-  }
-}
-
-void initDisplay() {
-  pinMode(EPD_CS, OUTPUT);
-  pinMode(EPD_DC, OUTPUT);
-  pinMode(EPD_RST, OUTPUT);
-  pinMode(EPD_BUSY, INPUT);
-  digitalWrite(EPD_CS, HIGH);
-  SPI.begin(EPD_SCK, -1, EPD_MOSI, EPD_CS);
-  epdReset();
-  epdCommand(0x12);
-  epdWait();
-  epdCommand(0x01);
-  epdData(0x27);
-  epdData(0x01);
-  epdData(0x00);
-  epdCommand(0x11);
-  epdData(0x03);
-  epdCommand(0x3C);
-  epdData(0x05);
-  epdCommand(0x18);
-  epdData(0x80);
-  epdSetWindowAndCursor();
-  epdClearBuffer();
-  epdRefresh();
-  displayReady = true;
-}
-
-void updateDisplay(const char* line1, const char* line2, const char* line3) {
-  virtualDisplay(line1, line2, line3);
-  if (!displayReady) return;
-  epdClearBuffer();
-  epdText(12, 18, line1, 2);
-  epdText(12, 54, line2, 1);
-  epdText(12, 80, line3, 1);
-  epdFrame(4, 4, 288, 120);
-  epdRefresh();
-}
-
-void drawMedicineSchedule() {
-  char pillsLine[40];
-  char timeLine[48];
-  char weightLine[40];
-  char medLine[48];
-  char doseLine[32];
-  snprintf(pillsLine, sizeof(pillsLine), "%d pills left", binMedicine.remainingPills);
-  snprintf(timeLine, sizeof(timeLine), "%s %s at %s", binMedicine.name.c_str(), binMedicine.dosage.c_str(), binMedicine.scheduledTime.c_str());
-  snprintf(medLine, sizeof(medLine), "%s %s", binMedicine.name.c_str(), binMedicine.dosage.c_str());
-  snprintf(doseLine, sizeof(doseLine), "DOSE %s", binMedicine.scheduledTime.c_str());
-  snprintf(weightLine, sizeof(weightLine), "Bin 1 %.1fg READY", simulatedWeight);
-
-  virtualDisplay(timeLine, binMedicine.condition.c_str(), pillsLine);
-
-  if (!displayReady) return;
-  epdClearBuffer();
-  epdText(10, 8, "ADELONIX SMART BOX", 2);
-  epdFrame(8, 36, 176, 58);
-  epdText(16, 46, medLine, 1);
-  epdText(16, 64, binMedicine.condition.c_str(), 1);
-  epdText(16, 82, doseLine, 1);
-  epdFrame(192, 36, 94, 58);
-  epdText(202, 48, pillsLine, 1);
-  epdText(202, 68, "BIN 1", 1);
-  epdText(202, 86, weightLine, 1);
-  epdText(10, 108, "READY", 2);
-  epdRefresh();
-}
-
-void drawPendingDose() {
-  char line2[48];
-  char line3[48];
-  snprintf(line2, sizeof(line2), "%s %s", binMedicine.name.c_str(), binMedicine.dosage.c_str());
-  snprintf(line3, sizeof(line3), "%d pills left - sending", binMedicine.remainingPills);
-  virtualDisplay("PILL REMOVED", line2, line3);
-
-  if (!displayReady) return;
-  epdClearBuffer();
-  epdText(10, 10, "PILL REMOVED", 2);
-  epdFrame(8, 42, 280, 48);
-  epdText(18, 54, line2, 1);
-  epdText(18, 72, "AI DROP OK - SENDING", 1);
-  epdText(10, 104, "SYNCING", 2);
-  epdRefresh();
-}
-
-void drawDoseTaken() {
-  char line2[48];
-  char line3[48];
-  snprintf(line2, sizeof(line2), "%s %s", binMedicine.name.c_str(), binMedicine.dosage.c_str());
-  snprintf(line3, sizeof(line3), "%d pills left | Score +15", binMedicine.remainingPills);
-  virtualDisplay("DOSE TAKEN", line2, line3);
-
-  if (!displayReady) return;
-  epdClearBuffer();
-  epdText(10, 10, "DOSE TAKEN", 2);
-  epdFrame(8, 42, 280, 46);
-  epdText(18, 54, line2, 1);
-  epdText(18, 72, line3, 1);
-  epdText(10, 102, "SCORE +15", 2);
-  epdText(160, 108, "BACKEND SYNCED", 1);
-  epdRefresh();
-}
-
-void virtualDisplay(const char* line1, const char* line2, const char* line3) {
-  Serial.println();
-  Serial.println("+--------------------------------------+");
-  Serial.println("|          ADELONIX E-PAPER            |");
-  Serial.println("+--------------------------------------+");
-  Serial.printf("| %-36s |\n", line1);
-  Serial.printf("| %-36s |\n", line2);
-  Serial.printf("| %-36s |\n", line3);
-  Serial.println("+--------------------------------------+");
-}
-
-void bootFeedback() {
-  for (int i = 0; i < 2; i++) {
-    digitalWrite(PIN_LED, HIGH);
-    tone(PIN_BUZZER, 1800 + i * 400, 120);
-    delay(160);
-    digitalWrite(PIN_LED, LOW);
-    delay(100);
-  }
-}
+// ============== LED / BUZZER FEEDBACK ==============
 
 void alertFeedback() {
+  // dose detected: LED + buzzer pulse
   for (int i = 0; i < 4; i++) {
     digitalWrite(PIN_LED, HIGH);
     tone(PIN_BUZZER, 2200, 80);
@@ -748,12 +174,727 @@ void networkFailFeedback() {
   }
 }
 
-void resetForNextDemo() {
-  simulatedWeight = binMedicine.remainingPills * binMedicine.pillWeightG;
-  baselineWeight = simulatedWeight;
-  currentWeight = simulatedWeight;
-  aiFilter.reset(simulatedWeight);
-  eventInFlight = false;
-  Serial.println("Reset for next demo. Press green button again.");
-  drawMedicineSchedule();
+// ============== SERIAL LOAD-CELL CONSOLE ==============
+// Type commands in the Serial Monitor (115200, Newline) to change
+// what the load cell "reads". This is how the box is loaded and how
+// medicine physically leaves it in Velxio:
+//   W 45      -> set bin weight to 45 g
+//   TAKE      -> one pill removed (weight -= pillWeightG)
+//   TAKE 3    -> three pills removed
+//   PUT 2     -> two pills added back
+//   PILLS 8   -> set contents to exactly 8 pills
+//   TARE      -> zero the scale at current reading
+//   STATUS    -> dump current state
+//   HELP
+
+char serialBuf[48];
+
+void printHelp() {
+  Serial.println("SmartBox console:");
+  Serial.println("  W <g>     set bin weight in grams");
+  Serial.println("  TAKE [n]  remove n pills (default 1)");
+  Serial.println("  PUT [n]   add n pills (default 1)");
+  Serial.println("  PILLS <n> set contents to n pills");
+  Serial.println("  TARE      zero the scale now");
+  Serial.println("  STATUS    show state");
+}
+
+void printStatus() {
+  Serial.printf("[SCALE] reading=%.1fg tare=%.1fg baseline=%s%.1fg pills=%d est=%d\n",
+                readBinWeightG(), tareOffsetG,
+                baselineValid ? "" : "~", baselineG,
+                pillsRemaining, pillsEstFromWeight());
+  Serial.printf("[SLOT] %s @ %s takenToday? server said: %s | reminder=%s\n",
+                medName, medTime, doseTakenToday ? "yes" : "no",
+                reminderActive ? "ON" : "off");
+}
+
+long parseCountArg(const char* arg, long defval) {
+  if (!arg || !arg[0]) return defval;
+  return atol(arg);
+}
+
+void handleSerial() {
+  static size_t idx = 0;
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\r') continue;
+    if (c != '\n') {
+      if (idx < sizeof(serialBuf) - 1) serialBuf[idx++] = c;
+      continue;
+    }
+    serialBuf[idx] = '\0';
+    idx = 0;
+    String line = String(serialBuf);
+    line.trim();
+    if (!line.length()) continue;
+
+    int sp = line.indexOf(' ');
+    String cmd = (sp < 0) ? line : line.substring(0, sp);
+    cmd.toUpperCase();
+    String arg = (sp < 0) ? "" : line.substring(sp + 1);
+    arg.trim();
+
+    if (cmd == "HELP") {
+      printHelp();
+    } else if (cmd == "STATUS") {
+      printStatus();
+    } else if (cmd == "TARE") {
+      tareOffsetG = simBinG;
+      baselineG = readBinWeightG();
+      Serial.printf("[SCALE] tared, baseline %.1fg\n", baselineG);
+    } else if (cmd == "W") {
+      float g = arg.toFloat();
+      simBinG = g + tareOffsetG;
+      Serial.printf("[SCALE] weight forced to %.1fg\n", readBinWeightG());
+    } else if (cmd == "PILLS") {
+      long n = parseCountArg(arg.c_str(), -1);
+      if (n >= 0) {
+        simBinG = n * pillWeightG + tareOffsetG;
+        Serial.printf("[SCALE] set to %ld pills = %.1fg\n", n, readBinWeightG());
+      }
+    } else if (cmd == "TAKE" || cmd == "PUT") {
+      long n = parseCountArg(arg.c_str(), 1);
+      if (n < 0) n = 0;
+      float delta = n * pillWeightG;
+      if (cmd == "TAKE") {
+        // never let the simulated bin go below zero
+        delta = min(delta, max(0.0f, readBinWeightG()));
+        simBinG -= delta;
+        Serial.printf("[SCALE] removed %ld pill(s), reading %.1fg\n",
+                      n, readBinWeightG());
+      } else {
+        simBinG += delta;
+        Serial.printf("[SCALE] added %ld pill(s), reading %.1fg\n",
+                      n, readBinWeightG());
+      }
+    } else {
+      Serial.printf("[CONSOLE] unknown '%s' (try HELP)\n", serialBuf);
+    }
+  }
+}
+
+// ============== TEXT HELPERS ==============
+
+void clampCopy(char* dst, size_t cap, const char* src, size_t maxChars) {
+  size_t n = strlen(src);
+  if (n > maxChars) n = maxChars;
+  if (n > cap - 1) n = cap - 1;
+  memcpy(dst, src, n);
+  dst[n] = '\0';
+}
+
+void valueForKey(const String& text, const char* key, char* out, size_t cap) {
+  String needle = String(key) + "=";
+  int start = text.indexOf(needle);
+  out[0] = '\0';
+  if (start < 0) return;
+  start += needle.length();
+  int end = text.indexOf('\n', start);
+  if (end < 0) end = text.length();
+  String value = text.substring(start, end);
+  value.trim();
+  clampCopy(out, cap, value.c_str(), cap - 1);
+}
+
+// classic bitmap font, used for EVERYTHING now (header, footer, body)
+void uiText(int16_t x, int16_t y, const char* text, uint16_t color, uint8_t size) {
+  tft.setFont();
+  tft.setCursor(x, y);
+  tft.setTextColor(color);
+  tft.setTextSize(size);
+  tft.print(text);
+}
+
+// ---- direct classic-font rendering (replaces the canvas+blit path) ----
+
+// Shrinks text in place, appending "..." if it doesn't fit maxWidth
+void truncateToFit(char* text, uint8_t size, int16_t maxWidth) {
+  tft.setFont();
+  tft.setTextSize(size);
+  int16_t x1, y1; uint16_t w, h;
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  if (w <= maxWidth) return;
+
+  while (w > maxWidth - 20 && strlen(text) > 1) {
+    text[strlen(text) - 1] = '\0';
+    tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  }
+  strcat(text, "...");
+}
+
+// Draws one line of text, horizontally centered on a 320px-wide screen,
+// vertically centered on cy. Straight tft.print() -- no off-screen canvas,
+// no per-pixel blit, so nothing to desync mid-line.
+void drawCenteredLine(int16_t cy, const char* text, uint8_t size, uint16_t color) {
+  tft.setFont();
+  tft.setTextSize(size);
+  int16_t x1, y1; uint16_t w, h;
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+
+  int16_t x = 160 - (int16_t)w / 2 - x1;
+  int16_t y = cy - (int16_t)h / 2 - y1;
+  if (x < 6) x = 6;
+
+  tft.setCursor(x, y);
+  tft.setTextColor(color);
+  tft.print(text);
+}
+
+// ---- loading animation: fills only, always safe ----
+
+void showLoader(const char* label) {
+  tft.fillScreen(COL_BG);
+  tft.fillRect(0, 0, 320, 28, COL_CARD);
+  uiText(10, 8, label, COL_WHITE, 2);
+  tft.fillRect(58, 118, 204, 12, COL_CARD);
+}
+
+void loaderBar(uint8_t segments) {
+  if (segments > 8) segments = 8;
+  tft.fillRect(60, 120, segments * 25, 8, COL_TEAL);
+}
+
+uint16_t stockColor() {
+  if (totalPills <= 0 || pillsRemaining < 0) return COL_WHITE;
+  if (pillsRemaining > totalPills / 2) return COL_GREEN;
+  if (pillsRemaining > totalPills / 5) return COL_AMBER;
+  return COL_RED;
+}
+
+// ============== STAGED PAINT QUEUE ==============
+// Still one job per loop tick -- this part was never the problem, it's kept
+// so SPI traffic stays spread out and each stage is still individually
+// logged if something ever needs debugging again.
+
+typedef void (*PaintFn)();
+static PaintFn paintJobs[8];
+static uint8_t paintCount = 0;
+static uint8_t paintIndex = 0;
+static unsigned long paintNextAt = 0;
+
+void paintFrame() {
+  tft.fillScreen(COL_BG);
+  tft.fillRect(0, 0, 320, 28, COL_CARD);
+  uiText(10, 8, "ADELONIX", COL_WHITE, 2);
+  uiText(238, 8, netOk ? "SYNCED" : "RETRY", netOk ? COL_GREEN : COL_AMBER, 2);
+  tft.fillRect(0, 212, 320, 28, COL_CARD);
+  uiText(64, 220, "SMART MED BOX v1", COL_GRAY, 2);
+}
+
+void paintBodyCard() {
+  tft.fillRect(0, 28, 320, 184, COL_CARD);
+}
+
+void paintMedName() {
+  char nameBuf[40];
+  strcpy(nameBuf, medName);
+  truncateToFit(nameBuf, 3, 300);
+  drawCenteredLine(58, nameBuf, 3, COL_WHITE);
+}
+
+void paintDoseLine() {
+  drawCenteredLine(96, medDosage, 2, COL_TEAL);
+  tft.fillRect(110, 112, 100, 4, COL_TEAL);
+}
+
+void paintCondLine() {
+  char condBuf[72];
+  strcpy(condBuf, lineCond);
+  truncateToFit(condBuf, 2, 300);
+  drawCenteredLine(142, condBuf, 2, COL_GRAY);
+}
+
+void paintPillCount() {
+  char numBuf[64];
+  strcpy(numBuf, lineNum);
+  uint8_t numSize = 3;
+  truncateToFit(numBuf, numSize, 300);
+  int16_t x1, y1; uint16_t w, h;
+  tft.getTextBounds(numBuf, 0, 0, &x1, &y1, &w, &h);
+  if (w > 300) numSize = 2;
+  drawCenteredLine(182, numBuf, numSize, stockColor());
+}
+
+void startPaintJobs() {
+  paintCount = 0;
+  paintIndex = 0;
+  paintJobs[paintCount++] = paintFrame;
+  paintJobs[paintCount++] = paintBodyCard;
+  paintJobs[paintCount++] = paintMedName;
+  paintJobs[paintCount++] = paintDoseLine;
+  if (reminderActive) paintJobs[paintCount++] = paintReminder; // hides cond line
+  else paintJobs[paintCount++] = paintCondLine;
+  paintJobs[paintCount++] = paintPillCount;
+  paintNextAt = millis() + 40;
+  Serial.printf("[TFT] %d paint jobs queued\n", paintCount);
+}
+
+void pumpPaintJobs() {
+  if (paintIndex >= paintCount) return;
+  if ((long)(millis() - paintNextAt) < 0) return;
+  Serial.printf("[TFT] job %d/%d\n", paintIndex + 1, paintCount);
+  paintJobs[paintIndex]();
+  paintIndex++;
+  paintNextAt = millis() + 45;
+  if (paintIndex >= paintCount) Serial.println("[TFT] all jobs done");
+}
+
+bool paintBusy() {
+  return paintIndex < paintCount;
+}
+
+// ============== NETWORK ==============
+
+String fetchSchedule() {
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/api/smartbox/" + DEVICE_ID + "/schedule";
+  apiClient.stop();
+  apiClient.setTimeout(20000);
+  http.begin(apiClient, url);
+  http.setTimeout(20000);
+  http.useHTTP10(true);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.addHeader("Authorization", String("Bearer ") + API_KEY);
+  http.addHeader("ngrok-skip-browser-warning", "true");
+  http.addHeader("bypass-tunnel-reminder", "true");
+  http.addHeader("User-Agent", "Adelonix-SmartBox-Wokwi");
+  int code = http.GET();
+  String response = http.getString();
+  http.end();
+
+  Serial.printf("[NET] GET -> %d (%u bytes)\n", code, response.length());
+  Serial.printf("[MEM] heap: %u\n", (unsigned)ESP.getFreeHeap());
+  return (code == 200) ? response : String("");
+}
+
+int valueForKeyInt(const String& text, const char* key) {
+  char buf[16];
+  valueForKey(text, key, buf, sizeof(buf));
+  return atoi(buf);
+}
+
+float valueForKeyFloat(const String& text, const char* key) {
+  char buf[16];
+  valueForKey(text, key, buf, sizeof(buf));
+  return atof(buf);
+}
+
+// Minimal JSON escaping for the string fields we send
+void jsonEscape(const char* src, char* out, size_t cap) {
+  size_t o = 0;
+  for (size_t i = 0; src[i] != '\0' && o < cap - 2; i++) {
+    char c = src[i];
+    if (c == '"' || c == '\\') {
+      if (o < cap - 3) out[o++] = '\\';
+    }
+    out[o++] = c;
+  }
+  out[o] = '\0';
+}
+
+bool sendDoseEvent(float weightBefore, float weightAfter) {
+  char medEsc[80], doseEsc[48], condEsc[80], timeEsc[24];
+  jsonEscape(medName, medEsc, sizeof(medEsc));
+  jsonEscape(medDosage, doseEsc, sizeof(doseEsc));
+  jsonEscape(medCondition, condEsc, sizeof(condEsc));
+  jsonEscape(medTime, timeEsc, sizeof(timeEsc));
+
+  String payload = "{";
+  payload += "\"deviceId\":\"" + String(DEVICE_ID) + "\",";
+  payload += "\"binIndex\":0,";
+  payload += "\"medicine\":\"" + String(medEsc) + "\",";
+  payload += "\"dosage\":\"" + String(doseEsc) + "\",";
+  payload += "\"condition\":\"" + String(condEsc) + "\",";
+  payload += "\"scheduledTime\":\"" + String(timeEsc) + "\",";
+  payload += "\"timestamp\":\"" + String((unsigned long)(millis() / 1000)) + "\",";
+  payload += "\"confirmed\":true,";
+  payload += "\"verified\":true,";
+  payload += "\"weightBefore\":" + String(weightBefore, 1) + ",";
+  payload += "\"weightAfter\":" + String(weightAfter, 1) + ",";
+  payload += "\"weightLeftG\":" + String(weightAfter, 1) + ",";
+  payload += "\"pillsRemaining\":" + String(max(0, pillsRemaining)) + ",";
+  payload += "\"scoreImpact\":15";
+  payload += "}";
+
+  Serial.println("[DOSE] sending event");
+  Serial.println(payload);
+
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/api/smartbox/dose-event";
+  apiClient.stop();
+  apiClient.setTimeout(20000);
+  http.begin(apiClient, url);
+  http.setTimeout(20000);
+  http.useHTTP10(true);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String("Bearer ") + API_KEY);
+  http.addHeader("ngrok-skip-browser-warning", "true");
+  http.addHeader("bypass-tunnel-reminder", "true");
+  http.addHeader("User-Agent", "Adelonix-SmartBox-Wokwi");
+  int code = http.POST(payload);
+  Serial.printf("[NET] POST dose-event -> %d\n", code);
+  http.end();
+
+  return (code == 200 || code == 201);
+}
+
+bool applyData(const String& response) {
+  valueForKey(response, "medicine", medName, sizeof(medName));
+  valueForKey(response, "dosage", medDosage, sizeof(medDosage));
+  valueForKey(response, "condition", medCondition, sizeof(medCondition));
+  int pr = valueForKeyInt(response, "pillsRemaining");
+  int tp = valueForKeyInt(response, "totalPills");
+  float pw = valueForKeyFloat(response, "pillWeightG");
+
+  // ---- backend clock sync + dose-slot info ----
+  char timeBuf[8];
+  valueForKey(response, "serverDate", serverDate, sizeof(serverDate));
+  valueForKey(response, "serverTime", timeBuf, sizeof(timeBuf));
+  int sh = 0, sm = 0;
+  if (sscanf(timeBuf, "%d:%d", &sh, &sm) == 2) {
+    serverMinAtFetch = sh * 60 + sm;
+    fetchAnchorMs = millis();
+  }
+  valueForKey(response, "scheduledDate", schedDate, sizeof(schedDate));
+  valueForKey(response, "scheduledTime", medTime, sizeof(medTime));
+  int th = 0, tm = 0;
+  if (sscanf(medTime, "%d:%d", &th, &tm) == 2) schedMinutes = th * 60 + tm;
+  char ttBuf[4];
+  valueForKey(response, "doseTakenToday", ttBuf, sizeof(ttBuf));
+  doseTakenToday = atoi(ttBuf) == 1;
+
+  bool changed = false;
+  if (pr >= 0 && pr != pillsRemaining) { pillsRemaining = pr; changed = true; }
+  if (tp > 0 && tp != totalPills) { totalPills = tp; changed = true; }
+  if (pw > 0.1 && fabs(pw - pillWeightG) > 0.05) { pillWeightG = pw; changed = true; }
+
+  // ---- anchor the simulated load cell once, from the backend count.
+  // After this the scale is authoritative: only TAKE/PUT/W commands
+  // (or real load-cell changes) move it.
+  if (!scaleReady && pillsRemaining >= 0) {
+    simBinG = pillsRemaining * pillWeightG + tareOffsetG;
+    baselineG = readBinWeightG();
+    baselineValid = true;
+    scaleReady = true;
+    Serial.printf("[SCALE] anchored to backend: %.1fg (%d pills x %.1fg)\n",
+                  baselineG, pillsRemaining, pillWeightG);
+  }
+
+  if (pillsRemaining >= 0) {
+    long tenths = (long)(((float)pillsRemaining * pillWeightG) * 10.0 + 0.5);
+    snprintf(lineNum, sizeof(lineNum), "%d pills | %ld.%ld g",
+             pillsRemaining, tenths / 10L, tenths % 10L);
+  } else {
+    snprintf(lineNum, sizeof(lineNum), "waiting for data");
+  }
+  snprintf(lineCond, sizeof(lineCond), "%s | AT %s", medCondition, medTime);
+
+  char hash[224];
+  int pwTenths = (int)(pillWeightG * 10.0 + 0.5);
+  snprintf(hash, sizeof(hash), "%.38s|%.22s|%.38s|%.10s|%d|%d|%d",
+           medName, medDosage, medCondition, medTime, pillsRemaining, totalPills, pwTenths);
+  if (strcmp(hash, lastDrawnHash) != 0) {
+    strncpy(lastDrawnHash, hash, sizeof(lastDrawnHash) - 1);
+    changed = true;
+  }
+
+  Serial.println(changed ? "[DATA] changed" : "[DATA] unchanged");
+  return changed;
+}
+
+void syncOnce() {
+  String response = fetchSchedule();
+  loaderBar(7);
+  if (response.length() > 0) {
+    netOk = true;
+    if (applyData(response)) {
+      loaderBar(8);
+      Serial.println("[SETTLE] pausing before paint");
+      delay(700);
+      startPaintJobs();
+    } else {
+      loaderBar(8);
+    }
+  } else {
+    netOk = false;
+    Serial.println("[NET] fetch failed, showing retry state");
+    startPaintJobs();
+  }
+}
+
+// ============== SOFT CLOCK / REMINDER ==============
+
+int nowMinutesOfDay() {
+  if (serverMinAtFetch < 0) return -1;
+  long elapsedMin = (long)((millis() - fetchAnchorMs) / 60000UL);
+  return (serverMinAtFetch + (int)(elapsedMin % 1440L)) % 1440;
+}
+
+bool doseDue() {
+  if (!scaleReady || schedMinutes < 0 || serverMinAtFetch < 0) return false;
+  if (doseTakenToday) return false;
+  // only remind if the displayed slot is scheduled for today
+  if (schedDate[0] && serverDate[0] && strcmp(schedDate, serverDate) != 0) return false;
+  int now = nowMinutesOfDay();
+  if (now < 0) return false;
+  return now >= schedMinutes && now < schedMinutes + 180; // 3h nag window
+}
+
+void doseSlotId(char* out, size_t cap) {
+  snprintf(out, cap, "%.10s|%.5s", schedDate, medTime);
+}
+
+void updateReminder() {
+  bool due = doseDue();
+
+  if (!due) {
+    if (reminderActive) { // window passed or backend says taken
+      reminderActive = false;
+      digitalWrite(PIN_LED, LOW);
+      Serial.println("[REMIND] cleared");
+      strncpy(lastDrawnHash, "", sizeof(lastDrawnHash) - 1);
+      startPaintJobs(); // repaint without banner
+    }
+    return;
+  }
+
+  char slot[24];
+  doseSlotId(slot, sizeof(slot));
+  if (strcmp(remindedSlot, slot) != 0) {
+    strcpy(remindedSlot, slot);
+    reminderActive = true;
+    nextReminderBeep = 0;
+    Serial.printf("[REMIND] dose due: %s @ %s\n", medName, medTime);
+    strncpy(lastDrawnHash, "", sizeof(lastDrawnHash) - 1);
+    startPaintJobs();
+  }
+
+  if (reminderActive && millis() > nextReminderBeep) {
+    tone(PIN_BUZZER, 2400, 150);
+    digitalWrite(PIN_LED, !digitalRead(PIN_LED));
+    nextReminderBeep = millis() + 8000;
+  }
+}
+
+void paintReminder() {
+  tft.fillRect(6, 126, 308, 34, COL_RED);
+  drawCenteredLine(143, "DUE NOW - TAKE MED", 2, COL_WHITE);
+}
+
+// ============== INTAKE DETECTION (WEIGHT DROP) ==============
+// The load cell is the source of truth. Any drop of >= 60% of one
+// pill since baseline means medicine left the box -> verified dose
+// event goes to the backend. A rise means refill -> silent re-baseline.
+
+void monitorWeight() {
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck < 400) return;
+  lastCheck = millis();
+
+  if (!baselineValid || eventInFlight) return;
+
+  float cur = readBinWeightG();
+  float onePill = max(0.5f, pillWeightG);
+  float drop = baselineG - cur;
+  float rise = cur - baselineG;
+
+  if (drop >= onePill * 0.6) {
+    eventInFlight = true;
+
+    int removedPills = max(1, (int)((drop / onePill) + 0.5));
+    float weightBefore = baselineG;
+
+    Serial.printf("[INTAKE] %.1fg lost (~%d pills)\n", drop, removedPills);
+    alertFeedback();
+
+    if (pillsRemaining >= 0) {
+      pillsRemaining = max(0, pillsRemaining - removedPills);
+    } else {
+      pillsRemaining = pillsEstFromWeight();
+    }
+
+    if (pillsRemaining >= 0) {
+      long tenths = (long)(cur * 10.0 + 0.5);
+      snprintf(lineNum, sizeof(lineNum), "%d pills | %ld.%ld g",
+               pillsRemaining, tenths / 10L, tenths % 10L);
+      strncpy(lastDrawnHash, "", sizeof(lastDrawnHash) - 1);
+      startPaintJobs();
+    }
+
+    // reminder satisfied by physical removal
+    reminderActive = false;
+    digitalWrite(PIN_LED, LOW);
+
+    bool ok = sendDoseEvent(weightBefore, cur);
+    if (ok) {
+      Serial.println("[DOSE] verified by backend");
+      successFeedback();
+    } else {
+      Serial.println("[DOSE] backend unreachable/rejected");
+      networkFailFeedback();
+    }
+
+    baselineG = cur;
+    lastTelemetry = millis(); // don't double-fire telemetry right away
+    eventInFlight = false;
+
+  } else if (rise >= onePill * 0.6) {
+    Serial.printf("[SCALE] refill: +%.1fg\n", rise);
+    baselineG = cur;
+  }
+}
+
+// ============== WEIGHT TELEMETRY ==============
+
+void sendWeightTelemetry() {
+  String payload = "{";
+  payload += "\"deviceId\":\"" + String(DEVICE_ID) + "\",";
+  payload += "\"weightG\":" + String(readBinWeightG(), 1) + ",";
+  payload += "\"pillsEst\":" + String(pillsEstFromWeight()) + ",";
+  payload += "\"source\":\"velxio-sim\"";
+  payload += "}";
+
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/api/smartbox/weight";
+  apiClient.stop();
+  apiClient.setTimeout(10000);
+  http.begin(apiClient, url);
+  http.setTimeout(10000);
+  http.useHTTP10(true);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String("Bearer ") + API_KEY);
+  http.addHeader("ngrok-skip-browser-warning", "true");
+  http.addHeader("bypass-tunnel-reminder", "true");
+  http.addHeader("User-Agent", "Adelonix-SmartBox-Wokwi");
+  int code = http.POST(payload);
+  http.end();
+  Serial.printf("[NET] POST weight -> %d (%s)\n", code, payload.c_str());
+}
+
+// ============== BUTTON / DOSE DETECTION ==============
+
+// The green button physically ejects one pill from the bin: it lowers
+// the simulated load-cell reading, and monitorWeight() turns that
+// weight drop into a verified backend dose event -- exactly like a
+// real pill leaving a real box.
+void handleButton() {
+  if (digitalRead(PIN_BUTTON) != LOW) return;
+
+  // debounce: still pressed after 30ms?
+  delay(30);
+  if (digitalRead(PIN_BUTTON) != LOW) return;
+
+  float reading = readBinWeightG();
+  float delta = min(pillWeightG, max(0.0f, reading));
+  simBinG -= delta;
+  tone(PIN_BUZZER, 2000, 60);
+  Serial.printf("[BTN] pill ejected -> %.1fg\n", readBinWeightG());
+
+  // wait for release so one press = one pill
+  while (digitalRead(PIN_BUTTON) == LOW) delay(10);
+}
+
+// ============== LIFECYCLE ==============
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  pinMode(TFT_CS, OUTPUT);
+  digitalWrite(TFT_CS, HIGH);
+  SPI.begin(TFT_SCK, TFT_MISO, TFT_MOSI, TFT_CS);
+  tft.begin();
+  tft.setRotation(1); // Landscape 320x240
+  displayReady = true;
+
+  // hardware feedback pins
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW);
+  pinMode(PIN_BUZZER, OUTPUT);
+  digitalWrite(PIN_BUZZER, LOW);
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
+
+  Serial.println("[BOOT] smartbox display");
+
+  // PHASE 1: standalone loading animation, zero network involved
+  showLoader("STARTING...");
+  for (uint8_t seg = 1; seg <= 8; seg++) {
+    loaderBar(seg);
+    Serial.printf("[LOAD] segment %d\n", seg);
+    delay(220);
+  }
+
+  // PHASE 2: wifi
+  showLoader("CONNECTING...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("[WIFI] connecting");
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    digitalWrite(PIN_LED, !digitalRead(PIN_LED)); // LED blinks while connecting
+    delay(300);
+    Serial.print(".");
+  }
+  digitalWrite(PIN_LED, LOW);
+  Serial.println();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[WIFI] FAILED");
+    netOk = false;
+    snprintf(lineNum, sizeof(lineNum), "waiting for data");
+    startPaintJobs();
+    return;
+  }
+
+  Serial.print("[WIFI] connected IP: ");
+  Serial.println(WiFi.localIP());
+
+  // PHASE 3: fetch
+  showLoader("FETCHING DATA");
+  loaderBar(5);
+  syncOnce();
+}
+
+void loop() {
+  pumpPaintJobs();
+  handleSerial();
+  handleButton();
+  monitorWeight();
+  updateReminder();
+
+  static unsigned long hb = 0;
+  if (millis() - hb > 3000) {
+    Serial.printf("[HB] alive %lus\n", millis() / 1000);
+    hb = millis();
+  }
+
+  if (millis() - lastFetch > 30000 && !paintBusy()) {
+    lastFetch = millis();
+    if (WiFi.status() == WL_CONNECTED) {
+      String response = fetchSchedule();
+      if (response.length() > 0) {
+        netOk = true;
+        if (applyData(response)) startPaintJobs();
+        else updateReminder(); // slot info may have changed
+      } else {
+        netOk = false;
+      }
+    } else if (millis() - lastWifiTry > 15000) {
+      lastWifiTry = millis();
+      Serial.println("[WIFI] retrying");
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+  }
+
+  // periodic load-cell telemetry -> backend
+  if (scaleReady && !eventInFlight &&
+      WiFi.status() == WL_CONNECTED &&
+      millis() - lastTelemetry > 60000) {
+    lastTelemetry = millis();
+    sendWeightTelemetry();
+  }
+
+  delay(40);
 }

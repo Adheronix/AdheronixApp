@@ -8,6 +8,7 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationService } from "../../services/notification.service";
@@ -227,7 +228,6 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: 14,
-        fontFamily: "Inter_400Regular",
         color: '#000',
     },
     searchIconContainer: {
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 28,
-        fontFamily: "DMSerifDisplay_400Regular",
+        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
         marginBottom: 30,
         color: '#000',
     },
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         fontSize: 18,
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
         color: '#333',
         marginBottom: 15,
     },
@@ -290,11 +290,10 @@ const styles = StyleSheet.create({
     optionText: {
         fontSize: 14,
         color: '#666',
-        fontFamily: "Inter_400Regular",
     },
     selectedOptionText: {
         color: '#000',
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
     },
     snoozeRow: {
         flexDirection: 'row',
@@ -304,7 +303,6 @@ const styles = StyleSheet.create({
     subLabel: {
         fontSize: 12,
         color: '#888',
-        fontFamily: "Inter_400Regular",
         marginBottom: 5,
     },
     alertCard: {
@@ -330,12 +328,11 @@ const styles = StyleSheet.create({
     alertDate: {
         fontSize: 10,
         color: '#FF3B30',
-        fontFamily: "Inter_400Regular",
         marginBottom: 2,
     },
     alertMessage: {
         fontSize: 14,
         color: '#FF3B30',
-        fontFamily: "Inter_700Bold",
+        fontWeight: 'bold',
     },
 });

@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#fff',
     fontSize: 18,
-    fontFamily: 'Inter_700Bold',
+    fontWeight: 'bold',
   },
   scannerWrapper: {
     width: 280,
@@ -191,7 +191,6 @@ const styles = StyleSheet.create({
   instruction: {
     color: '#fff',
     fontSize: 14,
-    fontFamily: 'Inter_400Regular',
     textAlign: 'center',
     paddingHorizontal: 40,
   },
