@@ -42,7 +42,14 @@ const char* WIFI_PASSWORD = "";
 // back to ngrok https + WiFiClientSecure if you want encryption.
 const char* API_BASE_URL = "http://reveals-fix-car-residents.trycloudflare.com";
 const char* DEVICE_ID = "SMARTBOX-0001";
-const char* API_KEY = "change-me-smartbox-device-token";
+// Copy secrets.example.h to secrets.h and configure it locally.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+#ifndef SMARTBOX_API_KEY
+#define SMARTBOX_API_KEY ""
+#endif
+const char* API_KEY = SMARTBOX_API_KEY;
 
 // ============== TFT PINS ==============
 const int TFT_CS = 10;

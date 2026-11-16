@@ -51,3 +51,19 @@ Medicine simulation:
 - From then on the load cell is authoritative: weight drops become dose events, weight rises are refills.
 - The backend schedule endpoint returns `medicine`, `dosage`, `condition`, `scheduledTime`, `scheduledDate`, `pillsRemaining`, `totalPills`, `pillWeightG`, `doseTakenToday`, `serverDate`, and `serverTime`.
 - Pressing the green button or typing `TAKE` lowers the scale; the resulting verified dose event flows through to schedules, notifications, and the Health Score.
+
+
+## Local device credentials
+
+Copy `secrets.example.h` to `secrets.h` and set `SMARTBOX_API_KEY` there for
+development. `secrets.h` is ignored by Git. The backend must have the same
+development device key in its private environment and a device-to-patient map.
+Device requests are rejected when the backend key is absent.
+
+This simulator uses a shared development key. Production release still requires
+per-device provisioning, verified HTTPS transport, replay protection, and a
+separate patient-confirmation workflow. Demo dose injection requires
+`SMARTBOX_DEMO_ENABLED=true` and is always blocked in production.
+
+Any device key or database credential previously committed must be rotated;
+removing it from the current tree does not revoke historical copies.
