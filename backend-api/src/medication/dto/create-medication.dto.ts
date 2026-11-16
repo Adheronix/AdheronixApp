@@ -1,4 +1,12 @@
-import { IsIn, IsNotEmpty, IsObject, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  Min,
+  Max,
+  IsNotEmpty,
+  IsObject,
+  IsString,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateMedicationDto {
@@ -23,12 +31,14 @@ export class CreateMedicationDto {
   @IsNotEmpty()
   period: string;
 
-  @ApiProperty({ enum: ['clinician', 'pharmacist'] })
+  @ApiProperty({ enum: ['clinician', 'pharmacist', 'patient'] })
   @IsString()
-  @IsIn(['clinician', 'pharmacist'])
+  @IsIn(['clinician', 'pharmacist', 'patient'])
   source: string;
 
   @ApiProperty({ example: 2, description: 'Number of times per day' })
-  @IsNotEmpty()
+  @IsInt()
+  @Min(1)
+  @Max(24)
   frequency: number;
 }

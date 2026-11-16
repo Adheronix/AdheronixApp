@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from './../src/app.module';
 
@@ -14,6 +14,13 @@ describe('Notification Flow (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     await app.init();
 
     // 1. Register a new patient
@@ -37,7 +44,7 @@ describe('Notification Flow (e2e)', () => {
     await app.close();
   });
 
-  it('should update push token and receive notification on medication creation', async () => {
+  it('should update push preferences and publish an in-app medication-created update', async () => {
     // 2. Update Push Token
     await request(app.getHttpServer())
       .patch('/patient/profile/push-token')
@@ -56,7 +63,8 @@ describe('Notification Flow (e2e)', () => {
         },
         intake_recommendation: 'Take with food',
         period: '7 days',
-        source: 'QR',
+        source: 'clinician',
+        frequency: 1,
       })
       .expect(201);
 
@@ -70,9 +78,9 @@ describe('Notification Flow (e2e)', () => {
     const notifications = notificationsResponse.body;
     expect(notifications.length).toBeGreaterThan(0);
     const medicationReminder = notifications.find(
-      (n) => n.type === 'medication_reminder',
+      (n) => n.type === 'medication_update',
     );
     expect(medicationReminder).toBeDefined();
-    expect(medicationReminder.title).toContain('Medication Reminder');
+    expect(medicationReminder.title).toContain('Medication added');
   });
 });

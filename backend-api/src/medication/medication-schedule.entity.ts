@@ -46,8 +46,11 @@ export class MedicationSchedule {
   status: IntakeStatus;
 
   @ApiProperty({ example: '2026-02-01T08:05:00Z', required: false })
-  @Column({ nullable: true })
-  taken_at: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  taken_at: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  confirmation_source: 'patient' | null;
 
   @ApiProperty({ example: 'Missed because I was away', required: false })
   @Column({ nullable: true, type: 'text' })

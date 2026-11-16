@@ -183,52 +183,40 @@ export class NotificationService {
   }
 
   async sendNotification(notification: Notification) {
-    try {
-      this.logger.log(
-        `Processing notification ${notification.notification_id} for patient ${notification.patient.patient_id}`,
-      );
-
-      const patient = notification.patient;
-
-      // 1. Send Push Notification if enabled and token exists
-      if (patient.push_notifications_enabled && patient.fcm_token) {
+    const patient = notification.patient;
+    const delivery: Record<string, string> = {
+      in_app: 'available',
+      push: 'not_requested',
+      email: 'not_configured',
+    };
+    if (patient.push_notifications_enabled && patient.fcm_token) {
+      try {
         await this.pushService.send({
           token: patient.fcm_token,
           title: notification.title,
           body: notification.message,
           data: notification.metadata,
         });
-      } else {
-        this.logger.log(
-          `Skipping push for patient ${patient.patient_id}: Enabled=${patient.push_notifications_enabled}, Token=${!!patient.fcm_token}`,
-        );
+        delivery.push = 'accepted';
+      } catch {
+        delivery.push = 'failed';
       }
-
-      // 2. Send Email if enabled
-      if (patient.email_notifications_enabled && patient.email) {
-        await this.emailService.send({
-          to: patient.email,
-          subject: notification.title,
-          text: notification.message,
-        });
-      }
-
-      notification.status = NotificationStatus.SENT;
-      notification.sent_at = new Date();
-
-      await this.notificationRepository.save(notification);
-
-      this.logger.log(
-        `Notification ${notification.notification_id} sent successfully`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send notification ${notification.notification_id}: ${error.message}`,
-      );
-      notification.status = NotificationStatus.FAILED;
-      await this.notificationRepository.save(notification);
-      // Don't throw error to prevent crashing a batch process
     }
+    notification.metadata = { ...notification.metadata, delivery };
+    // SENT means published to the in-app inbox; channel results are separate.
+    notification.status = NotificationStatus.SENT;
+    notification.sent_at = new Date();
+    await this.notificationRepository.save(notification);
+  }
+
+  async removeForMedication(patientId: string, medicationId: string) {
+    const notifications = await this.notificationRepository.find({
+      where: { patient: { patient_id: patientId } },
+    });
+    const related = notifications.filter(
+      (n) => n.metadata?.medication_id === medicationId,
+    );
+    if (related.length) await this.notificationRepository.remove(related);
   }
 
   async createMedicationReminder(

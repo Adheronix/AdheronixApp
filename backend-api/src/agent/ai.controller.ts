@@ -5,6 +5,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -84,10 +85,10 @@ export class AiController {
     const model =
       this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
       this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
-      'llama-3.3-70b-versatile';
+      'openai/gpt-oss-20b';
 
     let contextMessage = '';
-    if (body.patient_context !== false) {
+    if (body.patient_context === true) {
       const context = await this.doctorAgentService.buildPatientContext(
         patient.patient_id,
       );
@@ -109,12 +110,18 @@ export class AiController {
       })),
     ];
 
-    const response = await this.aiClientService.createChatCompletion({
-      model,
-      temperature: 0.7,
-      max_tokens: 800,
-      messages,
-    });
+    const response = await this.aiClientService
+      .createChatCompletion({
+        model,
+        temperature: 0.7,
+        max_tokens: 800,
+        messages,
+      })
+      .catch(() => {
+        throw new ServiceUnavailableException(
+          'The AI assistant is temporarily unavailable. Please try again later.',
+        );
+      });
 
     const content =
       response.choices?.[0]?.message?.content?.trim() ??

@@ -32,6 +32,13 @@ interface OptionalAuthRequest extends Request {
 export class SmartboxController {
   constructor(private readonly smartboxService: SmartboxService) {}
 
+  @Get('devices')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  listDevices(@GetPatient() patient: Patient) {
+    return this.smartboxService.listDevicesForPatient(patient.patient_id);
+  }
+
   @Post('dose-event')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

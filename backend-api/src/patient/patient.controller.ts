@@ -1,5 +1,6 @@
 import {
   Body,
+  Get,
   Controller,
   Post,
   Patch,
@@ -39,6 +40,13 @@ export class PatientController {
   @ApiOkResponse({ description: 'Patient logged in successfully' })
   login(@Body() dto: LoginPatientDto) {
     return this.patientService.login(dto);
+  }
+
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  getProfile(@GetPatient() patient: Patient) {
+    return this.patientService.findById(patient.patient_id);
   }
 
   @Patch('profile/push-token')

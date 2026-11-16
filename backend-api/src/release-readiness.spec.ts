@@ -146,7 +146,7 @@ describe('Release readiness regressions', () => {
     expect(patientRepository.findOne).not.toHaveBeenCalled();
   });
 
-  it('loads medication details before generating a missed-dose notification', async () => {
+  it('reading today does not mutate dose truth or send missed-dose alerts', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-11-16T12:00:00Z'));
     const patient = { patient_id: 'patient-a' };
@@ -174,11 +174,8 @@ describe('Release readiness regressions', () => {
       { relations: string[] },
     ];
     expect(options.relations).toEqual(['medication']);
-    const [recipient, notification] = notifications.create.mock.calls[0] as [
-      string,
-      { message: string },
-    ];
-    expect(recipient).toBe('patient-a');
-    expect(notification.message).toContain('Example medicine');
+    expect(scheduleRepository.save).not.toHaveBeenCalled();
+    expect(notifications.create).not.toHaveBeenCalled();
+    expect(schedule.status).toBe(IntakeStatus.PENDING);
   });
 });

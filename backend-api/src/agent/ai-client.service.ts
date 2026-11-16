@@ -41,7 +41,7 @@ export class AiClientService {
   isConfigured() {
     return Boolean(
       this.configService.get<string>('GROQ_API_KEY') ||
-        this.configService.get<string>('OPENROUTER_API_KEY'),
+      this.configService.get<string>('OPENROUTER_API_KEY'),
     );
   }
 
@@ -139,11 +139,9 @@ export class AiClientService {
 
     const requestedModel =
       typeof body.model === 'string' ? body.model : undefined;
-    const fallbackModels = [
-      requestedModel,
-      ...provider.models,
-    ].filter((model, index, models): model is string =>
-      Boolean(model) && models.indexOf(model) === index,
+    const fallbackModels = [requestedModel, ...provider.models].filter(
+      (model, index, models): model is string =>
+        Boolean(model) && models.indexOf(model) === index,
     );
 
     let lastError: Error | null = null;
@@ -168,16 +166,16 @@ export class AiClientService {
             ? JSON.stringify(error.response.data)
             : error.message;
 
-          if (status === 429) {
+          if (status === 429 || status === 404) {
             this.logger.warn(
-              `Model ${model} rate-limited, trying next fallback...`,
+              `Model ${model} unavailable, trying next configured fallback...`,
             );
             lastError = error;
             continue;
           }
 
           throw new Error(
-              `${provider.name} request failed with ${status}: ${errorBody}`,
+            `${provider.name} request failed with ${status}: ${errorBody}`,
           );
         }
         throw error;
@@ -201,10 +199,12 @@ export class AiClientService {
           this.configService.get<string>('GROQ_BASE_URL') ??
           'https://api.groq.com/openai/v1',
         models: [
+          'openai/gpt-oss-20b',
+          'qwen/qwen3.8-27b',
           this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
-            'llama-3.3-70b-versatile',
+            'openai/gpt-oss-20b',
           this.configService.get<string>('GROQ_MONITOR_MODEL') ??
-            'llama-3.1-8b-instant',
+            'openai/gpt-oss-20b',
         ],
       };
     }
@@ -230,9 +230,9 @@ export class AiClientService {
     if (this.configService.get<string>('GROQ_API_KEY')) {
       return kind === 'primary'
         ? (this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
-            'llama-3.3-70b-versatile')
+            'openai/gpt-oss-20b')
         : (this.configService.get<string>('GROQ_MONITOR_MODEL') ??
-            'llama-3.1-8b-instant');
+            'openai/gpt-oss-20b');
     }
 
     return kind === 'primary'
@@ -242,7 +242,10 @@ export class AiClientService {
           'qwen/qwen3-next-80b-a3b-instruct:free');
   }
 
-  private getHeaders(apiKey: string, providerName: string): Record<string, string> {
+  private getHeaders(
+    apiKey: string,
+    providerName: string,
+  ): Record<string, string> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
