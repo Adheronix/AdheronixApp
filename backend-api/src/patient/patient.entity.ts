@@ -32,7 +32,7 @@ export class Patient {
   @Column({ nullable: true, unique: true })
   phone_number: string;
 
-  @Column()
+  @Column({ select: false })
   password_hash: string;
 
   @Column({ nullable: true })

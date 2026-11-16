@@ -1,4 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -38,12 +44,18 @@ export class SmartboxService {
 
   validateDeviceToken(authorization?: string) {
     const expected = this.configService.get<string>('SMARTBOX_API_KEY');
-    if (!expected) {
-      return;
+    const token = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    if (!expected || !token) {
+      throw new UnauthorizedException(
+        'Smartbox device authentication required',
+      );
     }
-
-    const token = authorization?.replace(/^Bearer\s+/i, '').trim();
-    if (token !== expected) {
+    const received = Buffer.from(token);
+    const configured = Buffer.from(expected);
+    if (
+      received.length !== configured.length ||
+      !timingSafeEqual(received, configured)
+    ) {
       throw new UnauthorizedException('Invalid smartbox device token');
     }
   }
@@ -86,6 +98,12 @@ export class SmartboxService {
   }
 
   async recordDemoDose(patientId: string) {
+    if (
+      this.configService.get<string>('NODE_ENV') === 'production' ||
+      this.configService.get<string>('SMARTBOX_DEMO_ENABLED') !== 'true'
+    ) {
+      throw new ForbiddenException('Smartbox demo doses are disabled');
+    }
     const schedule = await this.findBestDoseSchedule(patientId);
     const medication =
       schedule?.medication ??
@@ -145,18 +163,14 @@ export class SmartboxService {
   }
 
   async getLatestForPatient(patientId?: string) {
-    const event =
-      (patientId
-        ? await this.eventRepository.findOne({
-            where: { patient: { patient_id: patientId } },
-            relations: ['patient'],
-            order: { received_at: 'DESC' },
-          })
-        : null) ??
-      (await this.eventRepository.findOne({
-        relations: ['patient'],
-        order: { received_at: 'DESC' },
-      }));
+    if (!patientId) {
+      throw new UnauthorizedException('Patient identity required');
+    }
+    const event = await this.eventRepository.findOne({
+      where: { patient: { patient_id: patientId } },
+      relations: ['patient'],
+      order: { received_at: 'DESC' },
+    });
 
     if (!event) {
       return {
@@ -193,9 +207,12 @@ export class SmartboxService {
     };
   }
 
-  async getLatestWeight(deviceId: string) {
+  async getLatestWeight(deviceId: string, patientId: string) {
+    if (!patientId) {
+      throw new UnauthorizedException('Patient identity required');
+    }
     const report = await this.weightRepository.findOne({
-      where: { device_id: deviceId },
+      where: { device_id: deviceId, patient: { patient_id: patientId } },
       order: { reported_at: 'DESC' },
     });
 
@@ -298,10 +315,23 @@ export class SmartboxService {
     deviceId: string,
     patientId?: string,
   ): Promise<Patient | null> {
+    const demoEnabled =
+      this.configService.get<string>('NODE_ENV') !== 'production' &&
+      this.configService.get<string>('SMARTBOX_DEMO_ENABLED') === 'true';
+    const mappedPatientId = this.patientIdFromDeviceMap(deviceId);
+    if (
+      patientId &&
+      patientId !== mappedPatientId &&
+      (!demoEnabled || mappedPatientId !== undefined)
+    ) {
+      throw new ForbiddenException('Device is not assigned to this patient');
+    }
     const resolvedPatientId =
-      patientId ??
-      this.patientIdFromDeviceMap(deviceId) ??
-      this.configService.get<string>('SMARTBOX_DEMO_PATIENT_ID');
+      mappedPatientId ??
+      (demoEnabled
+        ? (patientId ??
+          this.configService.get<string>('SMARTBOX_DEMO_PATIENT_ID'))
+        : undefined);
 
     if (!resolvedPatientId) {
       return null;

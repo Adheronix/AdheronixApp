@@ -202,6 +202,7 @@ export class MedicationScheduleService {
         patient: { patient_id: patientId },
         scheduled_date: today,
       },
+      relations: ['medication'],
     });
 
     let taken = 0;
@@ -232,8 +233,13 @@ export class MedicationScheduleService {
             await this.notificationService.create(patientId, {
               title: 'Missed dose alert',
               message: `You missed your ${schedule.scheduled_time} dose of ${
-                (schedule.medication as any)?.prescription?.[0]?.name ||
-                (schedule.medication as any)?.name ||
+                (
+                  schedule.medication.prescription as {
+                    name?: string;
+                    prescription?: { name?: string }[];
+                  }
+                )?.prescription?.[0]?.name ||
+                (schedule.medication.prescription as { name?: string })?.name ||
                 'medication'
               }.`,
               type: NotificationType.SYSTEM_ALERT,

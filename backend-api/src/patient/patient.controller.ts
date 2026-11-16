@@ -19,6 +19,7 @@ import { LoginPatientDto } from './dto/login-patient.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { GetPatient } from '../auth/decorator/get-user.decorator';
 import { Patient } from './patient.entity';
+import { UpdateProfileDto, UpdatePushTokenDto } from './dto/update-profile.dto';
 
 @ApiTags('patient')
 @Controller('patient')
@@ -47,9 +48,9 @@ export class PatientController {
   @ApiOkResponse({ description: 'Token updated successfully', type: Patient })
   updatePushToken(
     @GetPatient() patient: Patient,
-    @Body('token') token: string,
+    @Body() dto: UpdatePushTokenDto,
   ) {
-    return this.patientService.updatePushToken(patient.patient_id, token);
+    return this.patientService.updatePushToken(patient.patient_id, dto.token);
   }
 
   @Patch('profile')
@@ -59,7 +60,7 @@ export class PatientController {
   @ApiOkResponse({ description: 'Profile updated successfully', type: Patient })
   updateProfile(
     @GetPatient() patient: Patient,
-    @Body() updateData: Partial<Patient>,
+    @Body() updateData: UpdateProfileDto,
   ) {
     return this.patientService.updateProfile(patient.patient_id, updateData);
   }

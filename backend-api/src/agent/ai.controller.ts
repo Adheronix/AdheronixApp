@@ -14,6 +14,10 @@ import {
 } from '@nestjs/swagger';
 import {
   IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsIn,
+  MaxLength,
   ValidateNested,
   IsString,
   IsOptional,
@@ -28,15 +32,18 @@ import { DoctorAgentService } from './doctor-agent.service';
 import { ConfigService } from '@nestjs/config';
 
 class ChatMessageDto {
-  @IsString()
-  role: 'user' | 'assistant' | 'system';
+  @IsIn(['user', 'assistant'])
+  role: 'user' | 'assistant';
 
   @IsString()
+  @MaxLength(8000)
   content: string;
 }
 
 class ChatRequestDto {
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
   messages: ChatMessageDto[];

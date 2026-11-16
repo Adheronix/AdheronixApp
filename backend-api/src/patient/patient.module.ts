@@ -1,3 +1,4 @@
+import { getJwtSecret } from '../auth/jwt-secret';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
@@ -16,7 +17,7 @@ import { JwtStrategy } from '../auth/jwt.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') ?? 'supersecret',
+        secret: getJwtSecret(configService),
         signOptions: { expiresIn: '1d' },
       }),
     }),

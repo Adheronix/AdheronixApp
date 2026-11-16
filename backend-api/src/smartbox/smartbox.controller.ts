@@ -58,10 +58,17 @@ export class SmartboxController {
     return this.smartboxService.recordWeightReport(dto);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @Get(':deviceId/weight/latest')
-  @ApiOperation({ summary: 'Latest load-cell reading reported by a device' })
-  getLatestWeight(@Param('deviceId') deviceId: string) {
-    return this.smartboxService.getLatestWeight(deviceId);
+  @ApiOperation({
+    summary: 'Latest load-cell reading for a device owned by this patient',
+  })
+  getLatestWeight(
+    @Param('deviceId') deviceId: string,
+    @GetPatient() patient: Patient,
+  ) {
+    return this.smartboxService.getLatestWeight(deviceId, patient.patient_id);
   }
 
   @UseGuards(JwtAuthGuard)

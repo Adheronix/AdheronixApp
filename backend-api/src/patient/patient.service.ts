@@ -15,6 +15,7 @@ import { Patient } from './patient.entity';
 import { RegisterPatientDto } from './dto/register-patient.dto';
 import { LoginPatientDto } from './dto/login-patient.dto';
 import { UserRole } from '../auth/user-role.enum';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RegisterAdminDto } from '../admin/dto/register-admin.dto';
 
 @Injectable()
@@ -42,14 +43,15 @@ export class PatientService {
   }
 
   async login(dto: LoginPatientDto) {
-    console.log('Login attempt:', { ...dto, password: '***' });
     if (!dto.email && !dto.username && !dto.phone_number) {
       throw new BadRequestException(
         'Email, Username, or Phone Number must be provided',
       );
     }
 
-    const qb = this.patientRepository.createQueryBuilder('patient');
+    const qb = this.patientRepository
+      .createQueryBuilder('patient')
+      .addSelect('patient.password_hash');
     if (dto.email) {
       qb.where('LOWER(patient.email) = :identifier', {
         identifier: dto.email.toLowerCase(),
@@ -116,10 +118,10 @@ export class PatientService {
       throw new NotFoundException('Patient not found');
     }
     patient.fcm_token = token;
-    return this.patientRepository.save(patient);
+    return this.sanitizePatient(await this.patientRepository.save(patient));
   }
 
-  async updateProfile(patientId: string, updateData: Partial<Patient>) {
+  async updateProfile(patientId: string, updateData: UpdateProfileDto) {
     const patient = await this.patientRepository.findOne({
       where: { patient_id: patientId },
     });
@@ -127,12 +129,22 @@ export class PatientService {
       throw new NotFoundException('Patient not found');
     }
 
-    // Don't allow updating sensitive fields via this method
-    const { patient_id, password_hash, role, ...updatable } = updateData;
-    void patient_id;
-    void password_hash;
-    void role;
-
+    const allowedFields: (keyof UpdateProfileDto)[] = [
+      'full_names',
+      'age',
+      'gender',
+      'conditions',
+      'allergies',
+      'emergency_contact_name',
+      'emergency_contact_phone',
+      'push_notifications_enabled',
+      'email_notifications_enabled',
+    ];
+    const updatable = Object.fromEntries(
+      allowedFields
+        .filter((field) => updateData[field] !== undefined)
+        .map((field) => [field, updateData[field]]),
+    );
     Object.assign(patient, updatable);
     const updated = await this.patientRepository.save(patient);
     return this.sanitizePatient(updated);
