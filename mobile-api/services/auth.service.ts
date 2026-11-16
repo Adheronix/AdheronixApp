@@ -1,56 +1,68 @@
-import api from './api';
-import { deleteItemAsync, getItemAsync, setItemAsync } from './storage';
-import { registerForPushNotificationsAsync } from './push.service';
+import api from "./api";
+import { deleteItemAsync, getItemAsync, setItemAsync } from "./storage";
+import { Patient } from "./types";
+import { registerForPushNotificationsAsync } from "./push.service";
 
+interface AuthResponse {
+  access_token: string;
+  patient: Patient;
+}
+async function persist(data: AuthResponse) {
+  await setItemAsync("userToken", data.access_token);
+  await setItemAsync("userData", JSON.stringify(data.patient));
+  void registerForPushNotificationsAsync().catch(() => null);
+}
 export const authService = {
-  async login(credentials: { username?: string; email?: string; phone_number?: string; password: string }) {
-    console.log('API Request: POST /patient/login', credentials);
-    const response = await api.post('/patient/login', credentials);
-    if (response.data.access_token) {
-      await setItemAsync('userToken', response.data.access_token);
-      await setItemAsync('userData', JSON.stringify(response.data.user || response.data.patient));
-      // Best-effort push registration; ignore failures
-      void registerForPushNotificationsAsync();
-    }
-    return response.data;
+  async login(credentials: {
+    username?: string;
+    email?: string;
+    phone_number?: string;
+    password: string;
+  }) {
+    const { data } = await api.post<AuthResponse>(
+      "/patient/login",
+      credentials,
+    );
+    await persist(data);
+    return data;
   },
-
-  async signup(data: { full_names: string; username: string; password: string; email?: string; phone_number?: string }) {
-    const response = await api.post('/patient/register', data);
-    if (response.data.access_token) {
-      await setItemAsync('userToken', response.data.access_token);
-      await setItemAsync('userData', JSON.stringify(response.data.user || response.data.patient));
-      // Best-effort push registration for new users
-      void registerForPushNotificationsAsync();
-    }
-    return response.data;
+  async signup(body: {
+    full_names: string;
+    username: string;
+    password: string;
+    email?: string;
+    phone_number?: string;
+  }) {
+    const { data } = await api.post<AuthResponse>("/patient/register", body);
+    await persist(data);
+    return data;
   },
-
   async logout() {
-    await Promise.all([
-      deleteItemAsync('userToken'),
-      deleteItemAsync('userData'),
-      deleteItemAsync('access_token'),
-      deleteItemAsync('patient'),
-      deleteItemAsync('user'),
-    ]);
+    await Promise.all(
+      ["userToken", "userData", "access_token", "patient", "user"].map(
+        deleteItemAsync,
+      ),
+    );
   },
-
   async isAuthenticated() {
-    const token = await getItemAsync('userToken');
-    return !!token;
+    return Boolean(await getItemAsync("userToken"));
   },
-
-  async getUser() {
-    const data = await getItemAsync('userData');
-    return data ? JSON.parse(data) : null;
-  },
-
-  async updateProfile(data: any) {
-    const response = await api.patch('/patient/profile', data);
-    if (response.data) {
-      await setItemAsync('userData', JSON.stringify(response.data.patient || response.data));
+  async getUser(): Promise<Patient | null> {
+    const value = await getItemAsync("userData");
+    try {
+      return value ? (JSON.parse(value) as Patient) : null;
+    } catch {
+      return null;
     }
-    return response.data;
-  }
+  },
+  async getProfile() {
+    const { data } = await api.get<Patient>("/patient/profile");
+    await setItemAsync("userData", JSON.stringify(data));
+    return data;
+  },
+  async updateProfile(body: Partial<Patient>) {
+    const { data } = await api.patch<Patient>("/patient/profile", body);
+    await setItemAsync("userData", JSON.stringify(data));
+    return data;
+  },
 };

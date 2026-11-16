@@ -1,30 +1,21 @@
-import api from './api';
-
-export interface NotificationItem {
-  notification_id: string;
-  title: string;
-  message: string;
-  type: string;
-  metadata?: Record<string, unknown> | null;
-  created_at: string;
-  read_at?: string | null;
-}
-
+import api from "./api";
+import { NotificationItem } from "./types";
+export type { NotificationItem } from "./types";
 export const notificationService = {
-  async list(unreadOnly = false): Promise<NotificationItem[]> {
-    const response = await api.get<NotificationItem[]>('/notifications', {
-      params: unreadOnly ? { unreadOnly: true } : undefined,
-    });
-    return response.data;
+  async list(unreadOnly = false) {
+    return (
+      await api.get<NotificationItem[]>("/notifications", {
+        params: unreadOnly ? { unreadOnly: true } : undefined,
+      })
+    ).data;
   },
-
-  async getUnreadCount(): Promise<number> {
-    const response = await api.get<number>('/notifications/unread/count');
-    return response.data;
+  async getUnreadCount() {
+    return (await api.get<number>("/notifications/unread/count")).data;
   },
-
-  async markAllAsRead(): Promise<void> {
-    await api.patch('/notifications/read-all');
+  async markAllAsRead() {
+    await api.patch("/notifications/read-all");
+  },
+  async markRead(id: string) {
+    await api.patch(`/notifications/${id}/read`);
   },
 };
-

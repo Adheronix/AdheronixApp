@@ -12,7 +12,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "postinstall": "patch-package && node scripts/setup-workspace-links.js",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:formatting": "node --test tests/markdown.test.cjs",
+    "test:ui": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/dm-serif-display": "^0.4.2",

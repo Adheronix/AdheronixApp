@@ -1,232 +1,197 @@
+import { useCallback, useState } from "react";
+import { Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    ActivityIndicator,
-    Platform,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { notificationService, NotificationItem } from "../services/notification.service";
-
-export default function NotificationsScreen() {
-    const router = useRouter();
-
-    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [markingRead, setMarkingRead] = useState(false);
-
-    const fetchNotifications = async () => {
-        try {
-            const data = await notificationService.list();
-            setNotifications(data);
-        } catch (error) {
-            console.error("Failed to load notifications", error);
-        } finally {
-            setLoading(false);
+  Button,
+  C,
+  Card,
+  Chip,
+  Empty,
+  Loading,
+  Notice,
+  PageTitle,
+  Row,
+  Screen,
+  T,
+} from "../components/ui";
+import { notificationService } from "../services/notification.service";
+import { useResource } from "../hooks/use-resource";
+import { useSession } from "../components/session";
+import { errorMessage } from "../services/api";
+export default function Notifications() {
+  const { refreshUnread } = useSession();
+  const { data, loading, error, refresh } = useResource(
+    useCallback(() => notificationService.list(), []),
+  );
+  const [actionError, setActionError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const inbox = (data ?? []).filter((n) => n.status !== "pending");
+  const scheduled = (data ?? []).filter(
+    (n) =>
+      n.status === "pending" &&
+      n.scheduled_for &&
+      new Date(n.scheduled_for) > new Date(),
+  );
+  async function read(id?: string) {
+    setBusy(true);
+    try {
+      if (id) await notificationService.markRead(id);
+      else await notificationService.markAllAsRead();
+      await refresh();
+      await refreshUnread();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Screen back>
+      <PageTitle
+        eyebrow="SMALL UPDATES, ALL TOGETHER"
+        title="Your inbox"
+        body="Reminders and updates from your care space."
+        action={
+          <Button
+            small
+            variant="secondary"
+            icon="checkmark-done-outline"
+            label="Mark all as read"
+            loading={busy}
+            disabled={!inbox.some((n) => !n.read_at)}
+            onPress={() => void read()}
+          />
         }
-    };
-
-    useEffect(() => {
-        fetchNotifications();
-    }, []);
-
-    const getIcon = (type: string) => {
-        switch (type) {
-            case "medication_reminder": return "medkit";
-            case "system_alert": return "alert-circle";
-            case "medication_update": return "refresh";
-            case "medication_expiry": return "time";
-            default: return "notifications";
-        }
-    };
-
-    const getIconColor = (type: string) => {
-        switch (type) {
-            case "medication_reminder": return "#4CAF50";
-            case "system_alert": return "#FF3B30";
-            case "medication_update": return "#2196F3";
-            case "medication_expiry": return "#FF9800";
-            default: return "#000";
-        }
-    };
-
-    const formatTime = (createdAt: string) => {
-        const created = new Date(createdAt);
-        const now = new Date();
-        const diffMs = now.getTime() - created.getTime();
-        const diffMinutes = Math.floor(diffMs / 60000);
-
-        if (diffMinutes < 1) return "Just now";
-        if (diffMinutes < 60) return `${diffMinutes} min ago`;
-        const diffHours = Math.floor(diffMinutes / 60);
-        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-        const diffDays = Math.floor(diffHours / 24);
-        return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-    };
-
-    const handleMarkAllRead = async () => {
-        try {
-            setMarkingRead(true);
-            await notificationService.markAllAsRead();
-            await fetchNotifications();
-        } finally {
-            setMarkingRead(false);
-        }
-    };
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={28} color="#000" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Notifications</Text>
-                <TouchableOpacity onPress={handleMarkAllRead} disabled={markingRead}>
-                    <Text style={styles.markReadText}>{markingRead ? "..." : "Read all"}</Text>
-                </TouchableOpacity>
-            </View>
-
-            {loading ? (
-                <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                    <ActivityIndicator size="large" color="#000" />
-                </View>
+      />
+      {(error || actionError) && (
+        <Notice message={error || actionError} error />
+      )}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        <View style={{ gap: 22 }}>
+          <Card style={{ padding: 0, gap: 0 }}>
+            {!inbox.length ? (
+              <Empty
+                icon="notifications-outline"
+                title="A quiet moment"
+                body="There are no updates in your inbox. Medication reminders will appear here when they are due."
+              />
             ) : (
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                    {notifications.map((item) => (
-                        <TouchableOpacity
-                            key={item.notification_id}
-                            style={[
-                                styles.notificationCard,
-                                !item.read_at && styles.unreadCard,
-                            ]}
-                        >
-                            <View
-                                style={[
-                                    styles.iconContainer,
-                                    { backgroundColor: getIconColor(item.type) + "15" },
-                                ]}
-                            >
-                                <Ionicons
-                                    name={getIcon(item.type)}
-                                    size={24}
-                                    color={getIconColor(item.type)}
-                                />
-                            </View>
-                            <View style={styles.contentContainer}>
-                                <View style={styles.topRow}>
-                                    <Text style={styles.notifTitle}>{item.title}</Text>
-                                    <Text style={styles.notifTime}>
-                                        {formatTime(item.created_at)}
-                                    </Text>
-                                </View>
-                                <Text style={styles.notifMessage} numberOfLines={2}>
-                                    {item.message}
-                                </Text>
-                            </View>
-                            {!item.read_at && <View style={styles.unreadDot} />}
-                        </TouchableOpacity>
-                    ))}
-                    {notifications.length === 0 && (
-                        <Text style={{ textAlign: "center", color: "#999", marginTop: 20 }}>
-                            No notifications yet.
-                        </Text>
-                    )}
-                </ScrollView>
+              inbox.map((n, i) => (
+                <Pressable
+                  key={n.notification_id}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    n.title + (n.read_at ? ", read" : ", unread")
+                  }
+                  onPress={() => {
+                    if (!n.read_at) void read(n.notification_id);
+                  }}
+                  style={({ pressed }) => ({
+                    padding: 22,
+                    borderTopWidth: i ? 1 : 0,
+                    borderTopColor: C.line,
+                    backgroundColor: pressed
+                      ? C.pale
+                      : n.read_at
+                        ? C.white
+                        : "#FAFCF8",
+                    gap: 9,
+                  })}
+                >
+                  <Row style={{ alignItems: "flex-start" }}>
+                    <View
+                      style={{
+                        width: 37,
+                        height: 37,
+                        borderRadius: 12,
+                        backgroundColor: C.mint,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons
+                        name={
+                          n.type === "medication_reminder"
+                            ? "time-outline"
+                            : "leaf-outline"
+                        }
+                        color={C.primary}
+                        size={19}
+                      />
+                    </View>
+                    <View style={{ flex: 1, gap: 6 }}>
+                      <Row
+                        style={{
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <T variant="h3" style={{ flex: 1 }}>
+                          {n.title}
+                        </T>
+                        {!n.read_at && (
+                          <View
+                            style={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: 4,
+                              backgroundColor: C.primary,
+                              marginTop: 7,
+                            }}
+                          />
+                        )}
+                      </Row>
+                      <T color={C.muted}>{n.message}</T>
+                      <T variant="small" color={C.muted}>
+                        {new Date(n.created_at).toLocaleString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </T>
+                    </View>
+                  </Row>
+                </Pressable>
+              ))
             )}
-        </SafeAreaView>
-    );
+          </Card>
+          {scheduled.length > 0 && (
+            <Card>
+              <Row style={{ justifyContent: "space-between" }}>
+                <T variant="h3">Coming up</T>
+                <Chip label={scheduled.length + " scheduled"} />
+              </Row>
+              {scheduled.slice(0, 3).map((n) => (
+                <Row
+                  key={n.notification_id}
+                  style={{
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <T color={C.muted} style={{ flex: 1 }}>
+                    {n.title}
+                  </T>
+                  <T variant="small" color={C.muted}>
+                    {new Date(n.scheduled_for!).toLocaleString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </T>
+                </Row>
+              ))}
+              <T variant="small" color={C.muted}>
+                These reminders are scheduled. They have not been sent yet.
+              </T>
+            </Card>
+          )}
+        </View>
+      )}
+    </Screen>
+  );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#fff",
-    },
-    header: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: "#F0F0F0",
-    },
-    backButton: {
-        padding: 5,
-    },
-    headerTitle: {
-        fontSize: 24,
-        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-        color: "#000",
-    },
-    markReadText: {
-        fontSize: 14,
-        color: "#666",
-    },
-    scrollContent: {
-        padding: 20,
-    },
-    notificationCard: {
-        flexDirection: "row",
-        padding: 15,
-        borderRadius: 15,
-        backgroundColor: "#fff",
-        marginBottom: 15,
-        borderWidth: 1,
-        borderColor: "#F0F0F0",
-        alignItems: "center",
-        // Shadow
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 5,
-        elevation: 2,
-    },
-    unreadCard: {
-        backgroundColor: "#F9F9F9",
-        borderColor: "#E0E0E0",
-    },
-    iconContainer: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        justifyContent: "center",
-        alignItems: "center",
-        marginRight: 15,
-    },
-    contentContainer: {
-        flex: 1,
-    },
-    topRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 4,
-    },
-    notifTitle: {
-        fontSize: 16,
-        fontWeight: "bold",
-        color: "#000",
-    },
-    notifTime: {
-        fontSize: 11,
-        color: "#AAA",
-    },
-    notifMessage: {
-        fontSize: 14,
-        color: "#666",
-        lineHeight: 18,
-    },
-    unreadDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: "#FF3B30",
-        marginLeft: 10,
-    },
-});

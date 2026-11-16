@@ -1,28 +1,29 @@
-import api from './api';
-
+import api from "./api";
+import { Medication } from "./types";
+export interface MedicationInput {
+  prescription: Record<string, unknown>;
+  intake_recommendation: string;
+  period: string;
+  source: string;
+  frequency: number;
+}
 export const medicationService = {
   async getAll() {
-    const response = await api.get('/medications');
-    return response.data;
+    return (await api.get<Medication[]>("/medications")).data;
   },
-
   async getById(id: string) {
-    const response = await api.get(`/medications/${id}`);
-    return response.data;
+    return (await api.get<Medication>(`/medications/${id}`)).data;
   },
-
-  async scanQR(payload: any) {
-    const response = await api.post('/medications/scan-qr', payload);
-    return response.data;
+  async create(body: MedicationInput) {
+    return (await api.post<Medication>("/medications", body)).data;
   },
-
-  async update(id: string, data: any) {
-    const response = await api.patch(`/medications/${id}`, data);
-    return response.data;
+  async scanQR(body: MedicationInput) {
+    return (await api.post<Medication>("/medications/scan-qr", body)).data;
   },
-
+  async update(id: string, body: Partial<MedicationInput>) {
+    return (await api.patch<Medication>(`/medications/${id}`, body)).data;
+  },
   async delete(id: string) {
-    const response = await api.delete(`/medications/${id}`);
-    return response.data;
-  }
+    await api.delete(`/medications/${id}`);
+  },
 };

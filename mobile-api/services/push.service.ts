@@ -1,15 +1,16 @@
-import Constants from 'expo-constants';
-import api from './api';
+import { Platform } from "react-native";
+import Constants from "expo-constants";
+import api from "./api";
 
-type NotificationsModule = typeof import('expo-notifications');
+type NotificationsModule = typeof import("expo-notifications");
 
 async function loadNotifications(): Promise<NotificationsModule | null> {
-  if (Constants.appOwnership === 'expo') {
+  if (Constants.appOwnership === "expo") {
     return null;
   }
 
   try {
-    return await import('expo-notifications');
+    return await import("expo-notifications");
   } catch {
     return null;
   }
@@ -21,7 +22,10 @@ async function loadNotifications(): Promise<NotificationsModule | null> {
  *
  * Call this after login/signup and optionally on app start.
  */
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
+export async function registerForPushNotificationsAsync(): Promise<
+  string | null
+> {
+  if (Platform.OS === "web") return null;
   const Notifications = await loadNotifications();
   if (!Notifications) {
     return null;
@@ -29,7 +33,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
   // Only run on native devices
   // On web this will no-op and return null.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isDevice = (Notifications as any).isDevice ?? true;
 
   if (!isDevice) {
@@ -39,29 +42,30 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
-  if (existingStatus !== 'granted') {
+  if (existingStatus !== "granted") {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
 
-  if (finalStatus !== 'granted') {
+  if (finalStatus !== "granted") {
     return null;
   }
 
   const pushToken = await Notifications.getExpoPushTokenAsync();
   const token =
-    typeof pushToken === 'string' ? pushToken : (pushToken as any).data ?? null;
+    typeof pushToken === "string"
+      ? pushToken
+      : ((pushToken as any).data ?? null);
 
   if (!token) {
     return null;
   }
 
   try {
-    await api.patch('/patient/profile/push-token', { token });
+    await api.patch("/patient/profile/push-token", { token });
   } catch {
     // Ignore backend errors here; app can continue without push
   }
 
   return token;
 }
-
