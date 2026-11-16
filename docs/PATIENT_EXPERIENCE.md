@@ -28,7 +28,7 @@ Core tokens are in `mobile-api/constants/theme.ts`; native characters are in `mo
 - Creating schedules is transactional, serializes concurrent edits for the same patient/medication and writes reminder records together with schedules. Reading a status endpoint does not mutate dose history or trigger emergency actions.
 - Device removal events stay separate from patient-confirmed ingestion and never infer new medications or improve a health score.
 - Notification records expose actual channel outcomes. In-app delivery works; email is not configured and native push needs native-device verification.
-- Local web development uses a same-origin Metro API proxy; native builds use `EXPO_PUBLIC_API_URL`.
+- Local development uses the Metro API proxy on web and native; release builds use `EXPO_PUBLIC_API_URL`.
 - Existing databases need `backend-api/migrations/20261116-dose-confirmation-source.sql` before this backend is released. Unknown historical origins remain NULL. No production migration or deployment was performed.
 
 ## Validation (16 November 2026)
@@ -36,7 +36,7 @@ Core tokens are in `mobile-api/constants/theme.ts`; native characters are in `mo
 - Backend unit suite: 27 passed.
 - Isolated PostgreSQL integration suite: 29 passed, covering ownership, validation, schedule replacement/history, delivery metadata and device provenance.
 - Live API smoke: 10 passed, including a real configured AI provider response with medication context disabled.
-- UI regression checks: 14 passed (`npm run test:ui`), covering reported Markdown artifacts, expressive states, signal freshness/expiry, malformed timestamps and essential contrast pairs.
+- UI regression checks: 22 passed (`npm run test:ui`), covering reported Markdown artifacts, expressive states, signal freshness/expiry, malformed timestamps, essential contrast pairs and native API-origin resolution.
 - Mobile TypeScript and ESLint: passed, zero lint errors/warnings.
 - Expo export: Android, iOS and web succeeded, with 23 web routes. Exported assets live outside the repository and were not published.
 - Browser verification uses synthetic records in the isolated local database. Verified sign-in, schedule persistence, patient confirmation/expression changes, formatted AI replies, conversation persistence through medication-form navigation, and MediBox offline-to-connected transition against authenticated API telemetry.
