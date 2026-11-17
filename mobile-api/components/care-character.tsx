@@ -1,14 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  Animated,
-  AppState,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from "react-native";
+import { Image } from "expo-image";
+import { useCareProgress } from "./care-progress";
+import { memo, useEffect, useRef } from "react";
+import { Animated, Easing, View, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { CareMood } from "../services/character-state";
+import { useMotionAllowed } from "../hooks/use-motion-allowed";
 
 type Kind = "care" | "assistant" | "box" | "journal";
 type Props = {
@@ -19,172 +15,326 @@ type Props = {
   active?: boolean;
   style?: ViewStyle;
 };
-const ink = "#173D50";
-const s = StyleSheet.create({
-  eye: { width: 8, height: 13, borderRadius: 6, backgroundColor: ink },
-  happyEye: {
-    width: 12,
-    height: 9,
-    borderRadius: 9,
-    borderTopWidth: 3,
-    borderColor: ink,
-    backgroundColor: "transparent",
-  },
-  smile: {
-    width: 17,
-    height: 10,
-    borderBottomWidth: 3,
-    borderColor: ink,
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
-    alignSelf: "center",
-    marginTop: 9,
-  },
-});
+const artwork = {
+  care: require("../assets/characters/care-body-v2.png"),
+  assistant: require("../assets/characters/assistant-body-v2.png"),
+  box: require("../assets/characters/box-body-v2.png"),
+  journal: require("../assets/characters/journal-body-v2.png"),
+};
+const encouraging = {
+  care: require("../assets/characters/care-encouraging-v3.png"),
+  assistant: require("../assets/characters/assistant-encouraging-v3.png"),
+  box: require("../assets/characters/box-encouraging-v3.png"),
+  journal: require("../assets/characters/journal-encouraging-v3.png"),
+};
+const attentive = {
+  care: require("../assets/characters/care-attentive-v3.png"),
+  assistant: require("../assets/characters/assistant-attentive-v3.png"),
+  box: require("../assets/characters/box-attentive-v3.png"),
+  journal: require("../assets/characters/journal-attentive-v3.png"),
+};
+const faceTop = { care: 77, assistant: 82, box: 94, journal: 80 };
+const ink = "#16394B";
 
 function Face({
-  mood = "welcome",
-  light = false,
-  resting = false,
+  mood,
+  blink,
+  emotion,
+  light,
+  resting,
 }: {
-  mood?: CareMood;
-  light?: boolean;
-  resting?: boolean;
+  mood: CareMood;
+  blink: Animated.Value;
+  emotion: Animated.Value;
+  light: boolean;
+  resting: boolean;
 }) {
-  const happy = mood === "celebrate";
+  const color = light ? "#A8F0DB" : resting ? "#86A9B8" : ink;
+  const celebrating = mood === "celebrate";
+  const cheerful = celebrating
+    ? 1
+    : emotion.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, mood === "gentle" ? 0.35 : 0.92],
+      });
+  const normal = celebrating
+    ? 0
+    : emotion.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, mood === "gentle" ? 0.85 : 0.08],
+      });
   return (
-    <View style={{ width: 58, alignItems: "center" }}>
-      <View
+    <View style={{ width: 70, height: 57, alignItems: "center" }}>
+      <Animated.View
         style={{
-          flexDirection: "row",
-          gap: happy ? 18 : 22,
-          alignItems: "center",
-          height: 15,
+          width: 60,
+          height: 21,
+          transform: [
+            { scaleY: blink },
+            {
+              translateX: emotion.interpolate({
+                inputRange: [0, 0.45, 1],
+                outputRange: [0, -1, 1.6],
+              }),
+            },
+          ],
         }}
       >
-        {[0, 1].map((i) => (
+        {[9, 43].map((left, i) => (
           <View
-            key={i}
-            style={[
-              happy ? s.happyEye : s.eye,
-              light
-                ? {
-                    backgroundColor: happy ? "transparent" : "#A4F5E0",
-                    borderColor: "#A4F5E0",
-                  }
-                : null,
-              resting ? { backgroundColor: "#86A5B4" } : null,
-              mood === "gentle" && i === 1
-                ? { height: 10, transform: [{ rotate: "-9deg" }] }
-                : null,
-            ]}
+            key={left}
+            style={{
+              position: "absolute",
+              left,
+              top: 1,
+              width: 12,
+              height: 18,
+            }}
           >
-            {!happy && (
-              <View
+            <Animated.View style={{ opacity: normal }}>
+              <LinearGradient
+                colors={
+                  light
+                    ? ["#BDF9E7", "#82DCC5"]
+                    : resting
+                      ? ["#9AB7C3", "#6F939F"]
+                      : ["#244C5A", "#102B39"]
+                }
                 style={{
-                  width: 2,
-                  height: 3,
-                  borderRadius: 2,
-                  backgroundColor: "#FFFFFF99",
-                  top: 2,
-                  left: 2,
+                  width: 10,
+                  height: resting ? 11 : 16,
+                  borderRadius: 7,
+                  marginTop: resting ? 3 : 0,
+                  transform: [
+                    {
+                      rotate:
+                        mood === "gentle" ? (i ? "-5deg" : "5deg") : "0deg",
+                    },
+                  ],
                 }}
-              />
-            )}
+              >
+                <View
+                  style={{
+                    width: 2.5,
+                    height: 3.5,
+                    borderRadius: 3,
+                    backgroundColor: "#FFFFFFB8",
+                    top: 2,
+                    left: 2,
+                  }}
+                />
+              </LinearGradient>
+            </Animated.View>
+            <Animated.View
+              style={{
+                position: "absolute",
+                top: 5,
+                left: -1,
+                width: 13,
+                height: 10,
+                borderTopWidth: 2.7,
+                borderColor: color,
+                borderRadius: 12,
+                opacity: cheerful,
+              }}
+            />
           </View>
         ))}
-      </View>
-      <View
-        style={[
-          s.smile,
-          resting ? { borderColor: "#86A5B4" } : null,
-          light ? { borderColor: "#A4F5E0" } : null,
-          mood === "ready" ? { width: 11, height: 5, marginTop: 10 } : null,
-          mood === "gentle"
-            ? {
-                width: 8,
-                height: 8,
-                borderWidth: 2,
-                borderRadius: 6,
-                borderColor: light ? "#A4F5E0" : ink,
-              }
-            : null,
-          mood === "progress" ? { width: 20, height: 12 } : null,
-        ]}
+      </Animated.View>
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 4,
+          top: 23,
+          width: 10,
+          height: 5,
+          borderRadius: 6,
+          backgroundColor: light ? "#9AEBD4" : "#E8F6F5",
+          opacity: emotion.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.02, resting ? 0.02 : 0.3],
+          }),
+        }}
+      />
+      <Animated.View
+        style={{
+          position: "absolute",
+          right: 4,
+          top: 23,
+          width: 10,
+          height: 5,
+          borderRadius: 6,
+          backgroundColor: light ? "#9AEBD4" : "#E8F6F5",
+          opacity: emotion.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.02, resting ? 0.02 : 0.3],
+          }),
+        }}
+      />
+      <Animated.View
+        style={{
+          marginTop: 6,
+          width: celebrating ? 23 : mood === "gentle" ? 13 : 20,
+          height: celebrating ? 14 : mood === "ready" ? 8 : 11,
+          borderBottomWidth: celebrating ? 0 : 2.7,
+          borderColor: color,
+          borderBottomLeftRadius: 18,
+          borderBottomRightRadius: 18,
+          backgroundColor: celebrating ? color : "transparent",
+          transform: [
+            {
+              scaleX: emotion.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 1.14],
+              }),
+            },
+            {
+              scaleY: emotion.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 1.2],
+              }),
+            },
+          ],
+        }}
       />
     </View>
   );
 }
 
-// Native geometry keeps expressions and connection lights responsive to real state.
-export function CareCharacter({
+export const CareCharacter = memo(function CareCharacter({
   size = 140,
   kind = "care",
-  mood = "welcome",
+  mood: suppliedMood,
   connected = false,
   active = true,
   style,
 }: Props) {
-  const glow = useRef(new Animated.Value(0.4)).current;
-  const [reduceMotion, setReduceMotion] = useState(true);
-  const [foreground, setForeground] = useState(
-    AppState.currentState === "active",
-  );
+  const { routine } = useCareProgress();
+  const mood = suppliedMood ?? routine.mood;
+  const pose =
+    mood === "gentle"
+      ? attentive
+      : mood === "progress" || mood === "celebrate"
+        ? encouraging
+        : artwork;
+  const motion = useMotionAllowed(active);
+  const blink = useRef(new Animated.Value(1)).current;
+  const emotion = useRef(new Animated.Value(0)).current;
+  const float = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0.35)).current;
+  const phase = useRef(Math.random()).current;
   useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduceMotion(value);
-    });
-    const preference = AccessibilityInfo.addEventListener(
-      "reduceMotionChanged",
-      setReduceMotion,
-    );
-    const app = AppState.addEventListener("change", (value) =>
-      setForeground(value === "active"),
-    );
-    return () => {
-      mounted = false;
-      preference.remove();
-      app.remove();
-    };
-  }, []);
-  useEffect(() => {
-    glow.setValue(0.4);
-    if (kind !== "box" || !connected || reduceMotion || !active || !foreground)
-      return;
-    const loop = Animated.loop(
+    blink.setValue(1);
+    emotion.setValue(0);
+    float.setValue(0);
+    glow.setValue(0.35);
+    if (!motion) return;
+    const closeEyes = () =>
       Animated.sequence([
-        Animated.timing(glow, {
-          toValue: 0.75,
-          duration: 1800,
+        Animated.timing(blink, {
+          toValue: 0.04,
+          duration: 95,
           useNativeDriver: true,
           isInteraction: false,
         }),
-        Animated.timing(glow, {
-          toValue: 0.3,
-          duration: 1800,
+        Animated.delay(35),
+        Animated.timing(blink, {
+          toValue: 1,
+          duration: 145,
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+      ]);
+    const blinking = Animated.loop(
+      Animated.sequence([
+        Animated.delay(3100 + phase * 1100),
+        closeEyes(),
+        Animated.delay(3900),
+        closeEyes(),
+        Animated.delay(3300),
+        closeEyes(),
+        Animated.delay(170),
+        closeEyes(),
+      ]),
+    );
+    const expression = Animated.loop(
+      Animated.sequence([
+        Animated.delay(6200 + phase * 1300),
+        Animated.timing(emotion, {
+          toValue: 1,
+          duration: 750,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.delay(1300),
+        Animated.timing(emotion, {
+          toValue: 0,
+          duration: 1000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.delay(1600),
+      ]),
+    );
+    const breathing = Animated.loop(
+      Animated.sequence([
+        Animated.timing(float, {
+          toValue: 1,
+          duration: 2100 + phase * 400,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.timing(float, {
+          toValue: 0,
+          duration: 2100 + phase * 400,
+          easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
           isInteraction: false,
         }),
       ]),
     );
-    loop.start();
-    return () => loop.stop();
-  }, [kind, connected, reduceMotion, active, foreground, glow]);
+    const lighting = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, {
+          toValue: 0.65,
+          duration: 1900,
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.timing(glow, {
+          toValue: 0.3,
+          duration: 1900,
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+      ]),
+    );
+    const loops =
+      connected && kind === "box"
+        ? [blinking, expression, breathing, lighting]
+        : [blinking, expression, breathing];
+    loops.forEach((loop) => loop.start());
+    return () => loops.forEach((loop) => loop.stop());
+  }, [motion, kind, connected, blink, emotion, float, glow, phase]);
   const box = kind === "box";
+  const displayedMood = mood;
+  const description = box
+    ? connected
+      ? "MediBox companion glowing after a recent device signal"
+      : "MediBox companion resting without a recent device signal"
+    : kind === "care"
+      ? `Care companion, ${mood === "celebrate" ? "happy after today’s patient confirmations" : mood === "progress" ? "encouraging your progress" : mood === "gentle" ? "gently checking in" : "ready to support you"}`
+      : kind === "assistant"
+        ? "Blue conversation companion"
+        : "Lavender journal companion";
   return (
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={
-        box
-          ? connected
-            ? "Pill-box companion glowing: recent device signal"
-            : "Pill-box companion resting: no recent device signal"
-          : kind === "care"
-            ? `Care companion, ${mood === "celebrate" ? "happy after today’s patient confirmations" : mood === "progress" ? "encouraging as you record your doses" : mood === "gentle" ? "gently checking in" : "ready to support you"}`
-            : `${kind === "assistant" ? "Blue conversation" : "Lavender journal"} companion`
-      }
+      accessibilityLabel={`${description}. ${mood === "celebrate" ? "Celebrating recorded doses" : mood === "gentle" ? "A gentle check-in" : mood === "progress" ? "Encouraging your progress" : "Ready to support you"}.`}
       style={[{ width: size, height: size }, style]}
     >
       <View
@@ -199,440 +349,116 @@ export function CareCharacter({
           transform: [{ scale: size / 200 }],
         }}
       >
-        {box ? (
-          <>
-            {connected && (
+        {box && connected && (
+          <Animated.View
+            style={{
+              position: "absolute",
+              left: 22,
+              top: 32,
+              width: 155,
+              height: 148,
+              borderRadius: 80,
+              backgroundColor: "#B3F1DE",
+              opacity: glow,
+            }}
+          />
+        )}
+        <Animated.View
+          style={{
+            position: "absolute",
+            left: 55,
+            top: box ? 177 : kind === "assistant" ? 178 : 190,
+            width: 90,
+            height: 7,
+            borderRadius: 50,
+            backgroundColor: "#194A5B0D",
+            transform: [
+              {
+                scaleX: float.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 0.94],
+                }),
+              },
+            ],
+          }}
+        />
+        <Animated.View
+          style={{
+            width: 200,
+            height: 200,
+            transform: [
+              {
+                translateY: float.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, box ? -0.5 : -2.5],
+                }),
+              },
+              {
+                scale: float.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, box ? 1.002 : 1.008],
+                }),
+              },
+              {
+                rotate: emotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [
+                    "0deg",
+                    box ? "0.5deg" : kind === "assistant" ? "-2deg" : "2deg",
+                  ],
+                }),
+              },
+            ],
+          }}
+        >
+          <Image
+            accessible={false}
+            source={pose[kind]}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            allowDownscaling
+            transition={motion ? 140 : 0}
+            style={{ width: 200, height: 200 }}
+          />
+          {box && connected && (
+            <>
               <Animated.View
                 style={{
                   position: "absolute",
-                  left: 16,
-                  top: 18,
-                  width: 170,
-                  height: 170,
-                  borderRadius: 90,
-                  backgroundColor: "#A6EFDD",
+                  left: 149,
+                  top: 50,
+                  width: 7.5,
+                  height: 7.5,
+                  borderRadius: 5,
+                  backgroundColor: "#35C69D",
                   opacity: glow,
-                  borderWidth: 2,
-                  borderColor: "#6CD5BB",
                 }}
               />
-            )}
-            <View
-              style={{
-                position: "absolute",
-                left: 44,
-                top: 171,
-                width: 113,
-                height: 13,
-                borderRadius: 60,
-                backgroundColor: "#23465D14",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 21,
-                top: 104,
-                width: 23,
-                height: 33,
-                borderRadius: 12,
-                backgroundColor: "#A5C9D5",
-                transform: [{ rotate: "15deg" }],
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 157,
-                top: 104,
-                width: 23,
-                height: 33,
-                borderRadius: 12,
-                backgroundColor: "#A5C9D5",
-                transform: [{ rotate: "-15deg" }],
-              }}
-            />
-            {[57, 125].map((left) => (
-              <View
-                key={left}
+              <Animated.View
                 style={{
                   position: "absolute",
-                  left,
-                  top: 157,
-                  width: 22,
-                  height: 21,
-                  borderRadius: 9,
-                  backgroundColor: "#497E91",
+                  left: 70,
+                  top: 144,
+                  width: 60,
+                  height: 3,
+                  borderRadius: 3,
+                  backgroundColor: "#44C9A5",
+                  opacity: glow,
                 }}
               />
-            ))}
-            <LinearGradient
-              colors={["#FFFFFF", "#E7F2F7", "#BDD6E0"]}
-              start={{ x: 0.2, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                position: "absolute",
-                left: 35,
-                top: 62,
-                width: 132,
-                height: 104,
-                borderRadius: 28,
-                borderWidth: 1,
-                borderColor: "#ACCED9",
-              }}
+            </>
+          )}
+          <View style={{ position: "absolute", left: 65, top: faceTop[kind] }}>
+            <Face
+              mood={displayedMood}
+              blink={blink}
+              emotion={emotion}
+              light={box && connected}
+              resting={box && !connected}
             />
-            <LinearGradient
-              colors={["#F5FFFF", "#CBE6EA"]}
-              style={{
-                position: "absolute",
-                left: 29,
-                top: 43,
-                width: 144,
-                height: 35,
-                borderRadius: 18,
-                borderBottomWidth: 4,
-                borderColor: "#7CA9B8",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 58,
-                top: 36,
-                width: 87,
-                height: 9,
-                borderRadius: 8,
-                backgroundColor: "#DFEDF3",
-                borderWidth: 1,
-                borderColor: "#A9C8D3",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 54,
-                top: 87,
-                width: 95,
-                height: 55,
-                borderRadius: 20,
-                backgroundColor: "#19445A",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Face
-                mood={connected ? "celebrate" : "ready"}
-                light={connected}
-                resting={!connected}
-              />
-            </View>
-            <View
-              style={{
-                position: "absolute",
-                left: 57,
-                top: 151,
-                width: 89,
-                height: 5,
-                borderRadius: 4,
-                backgroundColor: connected ? "#35B88F" : "#8EA8B4",
-              }}
-            />
-            <Animated.View
-              style={{
-                position: "absolute",
-                left: 149,
-                top: 55,
-                width: 9,
-                height: 9,
-                borderRadius: 5,
-                backgroundColor: connected ? "#2AB68C" : "#829DAA",
-                opacity: connected ? glow : 1,
-              }}
-            />
-          </>
-        ) : kind === "assistant" ? (
-          <>
-            <View
-              style={{
-                position: "absolute",
-                left: 42,
-                top: 158,
-                width: 117,
-                height: 15,
-                borderRadius: 60,
-                backgroundColor: "#19457110",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 55,
-                top: 128,
-                width: 31,
-                height: 31,
-                borderRadius: 7,
-                backgroundColor: "#6D9EE1",
-                transform: [{ rotate: "25deg" }],
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 25,
-                top: 54,
-                width: 34,
-                height: 34,
-                borderRadius: 20,
-                backgroundColor: "#C8DFFF",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 151,
-                top: 89,
-                width: 24,
-                height: 24,
-                borderRadius: 14,
-                backgroundColor: "#94BCEC",
-              }}
-            />
-            <LinearGradient
-              colors={["#DEEFFF", "#A0C9FA", "#6B9CDE"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                position: "absolute",
-                left: 37,
-                top: 42,
-                width: 130,
-                height: 105,
-                borderRadius: 45,
-                borderWidth: 1,
-                borderColor: "#A5C6F1",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 51,
-                top: 52,
-                width: 43,
-                height: 13,
-                borderRadius: 20,
-                backgroundColor: "#FFFFFF66",
-                transform: [{ rotate: "-16deg" }],
-              }}
-            />
-            <View style={{ position: "absolute", left: 72, top: 84 }}>
-              <Face mood="progress" />
-            </View>
-            <View
-              style={{
-                position: "absolute",
-                left: 156,
-                top: 25,
-                width: 9,
-                height: 9,
-                borderRadius: 5,
-                backgroundColor: "#74B5C5",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 172,
-                top: 40,
-                width: 5,
-                height: 5,
-                borderRadius: 3,
-                backgroundColor: "#9FC9E8",
-              }}
-            />
-          </>
-        ) : kind === "journal" ? (
-          <>
-            <View
-              style={{
-                position: "absolute",
-                left: 48,
-                top: 170,
-                width: 108,
-                height: 12,
-                borderRadius: 60,
-                backgroundColor: "#23355C12",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 63,
-                top: 151,
-                width: 23,
-                height: 26,
-                borderRadius: 9,
-                backgroundColor: "#7C8CC8",
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 119,
-                top: 151,
-                width: 23,
-                height: 26,
-                borderRadius: 9,
-                backgroundColor: "#7C8CC8",
-              }}
-            />
-            <LinearGradient
-              colors={["#E8E9FF", "#B6C2F4", "#8D9EDB"]}
-              style={{
-                position: "absolute",
-                left: 48,
-                top: 27,
-                width: 109,
-                height: 139,
-                borderRadius: 25,
-                borderLeftWidth: 9,
-                borderColor: "#758ABF",
-                transform: [{ rotate: "6deg" }],
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 127,
-                top: 29,
-                width: 10,
-                height: 34,
-                backgroundColor: "#4E7F96",
-                borderBottomLeftRadius: 5,
-                borderBottomRightRadius: 5,
-              }}
-            />
-            <View style={{ position: "absolute", left: 70, top: 78 }}>
-              <Face mood="welcome" />
-            </View>
-            <View
-              style={{
-                position: "absolute",
-                left: 79,
-                top: 48,
-                width: 49,
-                height: 4,
-                borderRadius: 4,
-                backgroundColor: "#FFFFFF88",
-              }}
-            />
-          </>
-        ) : (
-          <>
-            <View
-              style={{
-                position: "absolute",
-                left: 56,
-                top: 177,
-                width: 101,
-                height: 11,
-                borderRadius: 60,
-                backgroundColor: "#1E5B5615",
-              }}
-            />
-            {[64, 118].map((left) => (
-              <LinearGradient
-                key={left}
-                colors={["#88D9C9", "#399C96"]}
-                style={{
-                  position: "absolute",
-                  left,
-                  top: 153,
-                  width: 31,
-                  height: 27,
-                  borderRadius: 13,
-                  transform: [{ rotate: left === 64 ? "-9deg" : "9deg" }],
-                }}
-              />
-            ))}
-            <LinearGradient
-              colors={["#BBF2DF", "#54BDB0"]}
-              style={{
-                position: "absolute",
-                left: 29,
-                top: 95,
-                width: 28,
-                height: 49,
-                borderRadius: 18,
-                transform: [{ rotate: "-22deg" }],
-              }}
-            />
-            <LinearGradient
-              colors={["#C4F5E5", "#59BFB0"]}
-              style={{
-                position: "absolute",
-                left: 149,
-                top: mood === "celebrate" ? 65 : 90,
-                width: 27,
-                height: 49,
-                borderRadius: 18,
-                transform: [
-                  { rotate: mood === "celebrate" ? "40deg" : "20deg" },
-                ],
-              }}
-            />
-            <LinearGradient
-              colors={["#D6FAEC", "#8BDDC8", "#42ACA3"]}
-              start={{ x: 0.15, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                position: "absolute",
-                left: 47,
-                top: 23,
-                width: 113,
-                height: 141,
-                borderTopLeftRadius: 70,
-                borderTopRightRadius: 75,
-                borderBottomLeftRadius: 60,
-                borderBottomRightRadius: 62,
-                borderWidth: 1,
-                borderColor: "#85CDBF",
-                transform: [{ rotate: "-6deg" }],
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                left: 62,
-                top: 36,
-                width: 18,
-                height: 60,
-                borderRadius: 20,
-                backgroundColor: "#FFFFFF44",
-                transform: [{ rotate: "17deg" }],
-              }}
-            />
-            <View style={{ position: "absolute", left: 78, top: 78 }}>
-              <Face mood={mood} />
-            </View>
-            {mood === "celebrate" &&
-              [20, 167, 153].map((left, i) => (
-                <View
-                  key={left}
-                  style={{
-                    position: "absolute",
-                    left,
-                    top: [48, 31, 13][i],
-                    width: 7,
-                    height: 13,
-                    borderRadius: 3,
-                    backgroundColor: ["#79B9DE", "#9BD9C5", "#A8B8ED"][i],
-                    transform: [{ rotate: `${i * 37}deg` }],
-                  }}
-                />
-              ))}
-          </>
-        )}
+          </View>
+        </Animated.View>
       </View>
     </View>
   );
-}
+});

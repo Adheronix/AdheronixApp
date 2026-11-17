@@ -1,4 +1,5 @@
-import { Linking, Text, View } from "react-native";
+import { memo, useMemo } from "react";
+import { Linking, ScrollView, Text, View } from "react-native";
 import { C, T } from "./ui";
 import { markdownBlocks } from "../services/markdown";
 
@@ -53,10 +54,44 @@ function inline(text: string, depth = 0): React.ReactNode {
   return nodes;
 }
 
-export function RichText({ content }: { content: string }) {
+export const RichText = memo(function RichText({
+  content,
+}: {
+  content: string;
+}) {
+  const blocks = useMemo(() => markdownBlocks(content), [content]);
   return (
     <View style={{ gap: 7 }}>
-      {markdownBlocks(content).map((block, index) => {
+      {blocks.map((block, index) => {
+        if (block.kind === "table")
+          return (
+            <View key={index} style={{ gap: 9, marginVertical: 5 }}>
+              {block.rows?.map((row, r) => (
+                <View
+                  key={r}
+                  style={{
+                    padding: 13,
+                    borderRadius: 13,
+                    backgroundColor: C.bg,
+                    gap: 7,
+                    borderWidth: 1,
+                    borderColor: C.line,
+                  }}
+                >
+                  {row.map((cell, c) => (
+                    <View key={c} style={{ gap: 2 }}>
+                      <T variant="small" color={C.muted}>
+                        {inline(block.headers?.[c] ?? "")}
+                      </T>
+                      <T selectable variant={c === 0 ? "h3" : "body"}>
+                        {inline(cell)}
+                      </T>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+          );
         if (!block.text) return <View key={index} style={{ height: 2 }} />;
         if (block.kind === "list")
           return (
@@ -91,9 +126,11 @@ export function RichText({ content }: { content: string }) {
           );
         if (block.kind === "code")
           return (
-            <View
+            <ScrollView
+              horizontal
               key={index}
-              style={{ padding: 12, borderRadius: 10, backgroundColor: C.pale }}
+              style={{ borderRadius: 10, backgroundColor: C.pale }}
+              contentContainerStyle={{ padding: 12 }}
             >
               <Text
                 selectable
@@ -106,7 +143,7 @@ export function RichText({ content }: { content: string }) {
               >
                 {block.text}
               </Text>
-            </View>
+            </ScrollView>
           );
         return (
           <T key={index} selectable>
@@ -116,4 +153,4 @@ export function RichText({ content }: { content: string }) {
       })}
     </View>
   );
-}
+});

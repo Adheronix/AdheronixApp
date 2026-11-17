@@ -11,6 +11,9 @@ import { useSession } from "./session";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  model?: string | null;
+  provider?: string | null;
+  response_kind?: "care" | "scope" | "identity";
 }
 interface Chat {
   owner: string | null;
@@ -71,14 +74,33 @@ export function AssistantSessionProvider({
     ];
     update({ messages: next, text: "", busy: true, error: "" });
     try {
-      const { data } = await api.post<{ message: string }>(
+      const { data } = await api.post<{
+        message: string;
+        model?: string | null;
+        provider?: string | null;
+        response_kind?: "care" | "scope" | "identity";
+      }>(
         "/ai/chat",
-        { messages: next.slice(-40), patient_context: visible.context },
+        {
+          messages: next
+            .slice(-40)
+            .map(({ role, content }) => ({ role, content })),
+          patient_context: visible.context,
+        },
         { timeout: 60000, signal: controller.signal },
       );
       if (!controller.signal.aborted)
         update({
-          messages: [...next, { role: "assistant", content: data.message }],
+          messages: [
+            ...next,
+            {
+              role: "assistant",
+              content: data.message,
+              model: data.model,
+              provider: data.provider,
+              response_kind: data.response_kind,
+            },
+          ],
         });
     } catch (error) {
       if (!controller.signal.aborted)

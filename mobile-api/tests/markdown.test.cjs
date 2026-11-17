@@ -58,3 +58,29 @@ test("empty responses and Windows line endings are handled", () => {
   assert.equal(normalizeMarkdown("  \r\n\r\n "), "");
   assert.equal(normalizeMarkdown("one\r\ntwo\rthree"), "one\ntwo\nthree");
 });
+
+test("reported appointment table becomes labeled rows, not pipe paragraphs", () => {
+  const blocks = markdownBlocks(
+    "Here’s a check-list:\n\n| Item | Why it matters |\n|---|---|\n| **Photo ID** | Registration |\n| **List of medications** | Full picture |\n\nBring your questions.",
+  );
+  const table = blocks.find((b) => b.kind === "table");
+  assert.equal(table.headers.join(","), "Item,Why it matters");
+  assert.equal(table.rows.length, 2);
+  assert.equal(table.rows[1][1], "Full picture");
+  assert.equal(blocks.at(-1).text, "Bring your questions.");
+});
+test("table handles escaped pipes and pipes inside inline code", () => {
+  const table = markdownBlocks(
+    "Name | Notes\n:---|---:\nA \\| B | `x|y`\nC | D",
+  )[0];
+  assert.equal(table.kind, "table");
+  assert.equal(table.rows[0][0], "A | B");
+  assert.equal(table.rows[0][1], "`x|y`");
+});
+test("fenced tables remain inert code; ordinary pipes remain prose", () => {
+  assert.equal(
+    markdownBlocks("```\n|A|B|\n|---|---|\n|x|y|\n```")[0].kind,
+    "code",
+  );
+  assert.equal(markdownBlocks("Either A | B is fine.")[0].kind, "paragraph");
+});

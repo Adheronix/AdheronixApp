@@ -9,6 +9,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AssistantSessionProvider } from "../components/assistant-session";
+import { CareProgressProvider } from "../components/care-progress";
 import { AppShell } from "../components/app-shell";
 import { SessionProvider } from "../components/session";
 import { ActivityIndicator, View } from "react-native";
@@ -36,17 +37,19 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <SessionProvider>
         <StatusBar style="dark" />
-        <AssistantSessionProvider>
-          <AppShell>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                animation: "fade",
-                animationDuration: 140,
-              }}
-            />
-          </AppShell>
-        </AssistantSessionProvider>
+        <CareProgressProvider>
+          <AssistantSessionProvider>
+            <AppShell>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: "fade",
+                  animationDuration: 140,
+                }}
+              />
+            </AppShell>
+          </AssistantSessionProvider>
+        </CareProgressProvider>
       </SessionProvider>
     </SafeAreaProvider>
   );

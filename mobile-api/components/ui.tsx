@@ -1,4 +1,4 @@
-import React, { ComponentProps } from "react";
+import React, { ComponentProps, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -39,20 +39,20 @@ export function T({
 }) {
   const variants = {
     display: {
-      fontSize: 38,
-      lineHeight: 46,
+      fontSize: 34,
+      lineHeight: 42,
       fontFamily: "Inter_600SemiBold",
       letterSpacing: -1.5,
     },
     h1: {
-      fontSize: 30,
-      lineHeight: 39,
+      fontSize: 28,
+      lineHeight: 36,
       fontFamily: "Inter_600SemiBold",
       letterSpacing: -1,
     },
     h2: {
-      fontSize: 22,
-      lineHeight: 30,
+      fontSize: 21,
+      lineHeight: 28,
       fontFamily: "Inter_600SemiBold",
       letterSpacing: -0.6,
     },
@@ -167,9 +167,9 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          minHeight: small ? 44 : 46,
+          minHeight: small ? 44 : 48,
           paddingHorizontal: small ? 14 : 19,
-          borderRadius: 16,
+          borderRadius: 14,
           flexDirection: "row",
           gap: 8,
           alignItems: "center",
@@ -221,11 +221,11 @@ export function IconButton({
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => ({
-        width: 42,
-        height: 42,
+        width: 44,
+        height: 44,
         borderRadius: 13,
         backgroundColor: pressed ? C.mint : C.white,
-        borderWidth: 1,
+        borderWidth: 0,
         borderColor: C.line,
         alignItems: "center",
         justifyContent: "center",
@@ -262,8 +262,8 @@ export function Card({
           backgroundColor: C.white,
           borderWidth: 1,
           borderColor: C.line,
-          borderRadius: 24,
-          padding: 23,
+          borderRadius: 22,
+          padding: 20,
           gap: 14,
         },
         style,
@@ -321,13 +321,17 @@ export function Chip({
 export function Field({
   label,
   hint,
+  onFocus,
+  onBlur,
   ...props
 }: TextInputProps & { label: string; hint?: string }) {
+  const [focused, setFocused] = useState(false);
   return (
-    <View style={{ gap: 7 }}>
+    <View style={{ gap: 8 }}>
       <T
         variant="small"
-        style={{ fontFamily: "Inter_500Medium", color: C.ink }}
+        color={focused ? C.primary : C.ink}
+        style={{ fontFamily: "Inter_600SemiBold" }}
       >
         {label}
       </T>
@@ -335,18 +339,26 @@ export function Field({
         {...props}
         accessibilityLabel={label}
         placeholderTextColor="#617888"
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
         style={[
           {
-            borderWidth: 1,
-            borderColor: C.fieldBorder,
-            borderRadius: 15,
-            paddingHorizontal: 16,
-            paddingVertical: 15,
-            minHeight: 48,
+            borderWidth: focused ? 2 : 1,
+            borderColor: focused ? C.primary : C.fieldBorder,
+            borderRadius: 14,
+            paddingHorizontal: 15,
+            paddingVertical: 14,
+            minHeight: 50,
             fontSize: 14,
             fontFamily: "Inter_400Regular",
             color: C.ink,
-            backgroundColor: C.white,
+            backgroundColor: "#FBFDFE",
           },
           props.style,
         ]}
@@ -471,13 +483,16 @@ export function Screen({
   children,
   back = false,
   scroll = true,
+  header,
+  topPadding,
 }: {
   children: React.ReactNode;
   back?: boolean;
   scroll?: boolean;
+  header?: React.ReactNode;
+  topPadding?: number;
 }) {
-  const { width } = useWindowDimensions();
-  const wide = width >= 960;
+  const wide = useWindowDimensions().width >= 960;
   const { user, unread } = useSession();
   const content = (
     <View
@@ -486,8 +501,8 @@ export function Screen({
         maxWidth: 1160,
         alignSelf: "center",
         paddingHorizontal: wide ? 36 : 20,
-        paddingTop: wide ? 32 : 22,
-        paddingBottom: 30,
+        paddingTop: topPadding ?? (wide ? 30 : 22),
+        paddingBottom: scroll ? 28 : 8,
         flex: scroll ? undefined : 1,
       }}
     >
@@ -498,77 +513,81 @@ export function Screen({
     <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: C.bg }}>
       <View
         style={{
-          height: 70,
+          height: 64,
           borderBottomWidth: 1,
           borderBottomColor: C.line,
-          backgroundColor: C.bg,
-          paddingHorizontal: wide ? 36 : 20,
+          backgroundColor: C.white,
+          paddingHorizontal: wide ? 32 : 16,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
         }}
       >
-        <Row>
-          {back ? (
-            <IconButton
-              name="arrow-back"
-              label="Go back"
-              onPress={() => (router.canGoBack() ? router.back() : go("/home"))}
-            />
-          ) : null}
-          {wide ? (
-            <View>
-              <T variant="small" color={C.muted}>
-                YOUR CARE SPACE
-              </T>
-              <T variant="small" style={{ fontFamily: "Inter_500Medium" }}>
-                {new Date().toLocaleDateString("en-GB", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                })}
-              </T>
-            </View>
-          ) : (
-            <Brand />
-          )}
-        </Row>
-        <Row>
-          {user?.username.startsWith("preview_") && wide && (
-            <Chip label="Preview account" />
-          )}
-          <IconButton
-            name="notifications-outline"
-            label="Notifications"
-            badge={unread}
-            onPress={() => go("/notifications")}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Your profile"
-            onPress={() => go("/support")}
-            style={{
-              width: 39,
-              height: 39,
-              borderRadius: 20,
-              backgroundColor: C.mint,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <T
-              variant="small"
-              color={C.primary}
-              style={{ fontFamily: "Inter_600SemiBold" }}
-            >
-              {user?.full_names
-                ?.split(" ")
-                .map((v) => v[0])
-                .slice(0, 2)
-                .join("") || "You"}
-            </T>
-          </Pressable>
-        </Row>
+        {header ?? (
+          <>
+            <Row style={{ gap: 8 }}>
+              {back && (
+                <IconButton
+                  name="arrow-back"
+                  label="Go back"
+                  onPress={() =>
+                    router.canGoBack() ? router.back() : go("/home")
+                  }
+                />
+              )}
+              {wide ? (
+                <View>
+                  <T variant="small" color={C.muted}>
+                    YOUR CARE SPACE
+                  </T>
+                  <T variant="small" style={{ fontFamily: "Inter_500Medium" }}>
+                    {new Date().toLocaleDateString("en-GB", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })}
+                  </T>
+                </View>
+              ) : (
+                <Brand compact={back} />
+              )}
+            </Row>
+            <Row style={{ gap: 5 }}>
+              <IconButton
+                name="notifications-outline"
+                label="Notifications"
+                badge={unread}
+                onPress={() => go("/notifications")}
+              />
+              <Pressable
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Your profile"
+                onPress={() => go("/support")}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: C.mint,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <T
+                  variant="small"
+                  color={C.primary}
+                  style={{ fontFamily: "Inter_600SemiBold" }}
+                >
+                  {user?.full_names
+                    ?.split(" ")
+                    .map((v) => v[0])
+                    .slice(0, 2)
+                    .join("") || "You"}
+                </T>
+              </Pressable>
+            </Row>
+          </>
+        )}
       </View>
       {scroll ? (
         <ScrollView

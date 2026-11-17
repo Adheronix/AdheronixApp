@@ -1,24 +1,161 @@
 import { router, usePathname } from "expo-router";
-import { useEffect } from "react";
-import { Pressable, View, useWindowDimensions } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Pressable, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSession } from "./session";
 import { Brand, C, Companion, T } from "./ui";
+import { useMotionAllowed } from "../hooks/use-motion-allowed";
 
 const navigation = [
-  { path: "/home", label: "Today", icon: "grid-outline" as const },
-  { path: "/meds", label: "Medication", icon: "medical-outline" as const },
-  { path: "/ai", label: "Assistant", icon: "sparkles-outline" as const },
-  { path: "/iot", label: "Pill box", icon: "cube-outline" as const },
-  { path: "/support", label: "You", icon: "person-outline" as const },
+  {
+    path: "/home",
+    href: "/(tabs)/home",
+    label: "Today",
+    icon: "sunny-outline",
+    selectedIcon: "sunny",
+  },
+  {
+    path: "/meds",
+    href: "/(tabs)/meds",
+    label: "Medicines",
+    icon: "medkit-outline",
+    selectedIcon: "medkit",
+  },
+  {
+    path: "/ai",
+    href: "/(tabs)/ai",
+    label: "Assistant",
+    icon: "chatbubble-ellipses-outline",
+    selectedIcon: "chatbubble-ellipses",
+  },
+  {
+    path: "/iot",
+    href: "/(tabs)/iot",
+    label: "MediBox",
+    icon: "cube-outline",
+    selectedIcon: "cube",
+  },
+  {
+    path: "/support",
+    href: "/(tabs)/support",
+    label: "You",
+    icon: "person-outline",
+    selectedIcon: "person",
+  },
 ] as const;
+
+function BottomNavigation({ active }: { active: string }) {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const index = Math.max(
+    0,
+    navigation.findIndex((item) => item.path === active),
+  );
+  const selection = useRef(new Animated.Value(index)).current;
+  const motion = useMotionAllowed();
+  const itemWidth = (width - 16) / navigation.length;
+  useEffect(() => {
+    if (!motion) {
+      selection.setValue(index);
+      return;
+    }
+    const transition = Animated.spring(selection, {
+      toValue: index,
+      damping: 23,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: true,
+    });
+    transition.start();
+    return () => transition.stop();
+  }, [index, motion, selection]);
+  return (
+    <View
+      accessibilityRole="tablist"
+      accessibilityLabel="Main navigation"
+      style={{
+        backgroundColor: C.white,
+        borderTopWidth: 1,
+        borderTopColor: C.line,
+        paddingHorizontal: 8,
+        paddingTop: 5,
+        paddingBottom: Math.max(6, insets.bottom),
+      }}
+    >
+      <View style={{ flexDirection: "row", height: 64 }}>
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 3,
+            left: (itemWidth - 48) / 2,
+            width: 48,
+            height: 31,
+            borderRadius: 16,
+            backgroundColor: C.mint,
+            transform: [
+              { translateX: Animated.multiply(selection, itemWidth) },
+            ],
+          }}
+        />
+        {navigation.map((item) => {
+          const selected = item.path === active;
+          return (
+            <Pressable
+              key={item.path}
+              accessibilityRole="tab"
+              accessibilityLabel={item.label}
+              accessibilityState={{ selected }}
+              onPress={() => router.navigate(item.href)}
+              style={({ pressed }) => ({
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "flex-start",
+                paddingTop: 3,
+                gap: 4,
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 31,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons
+                  name={selected ? item.selectedIcon : item.icon}
+                  size={22}
+                  color={selected ? C.primary : C.muted}
+                />
+              </View>
+              <T
+                variant="small"
+                color={selected ? C.primary : C.muted}
+                style={{
+                  fontSize: 10.5,
+                  lineHeight: 16,
+                  fontFamily: selected
+                    ? "Inter_600SemiBold"
+                    : "Inter_500Medium",
+                }}
+              >
+                {item.label}
+              </T>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading } = useSession();
   const wide = useWindowDimensions().width >= 960;
-  const insets = useSafeAreaInsets();
   const publicRoute = pathname.startsWith("/auth") || pathname === "/";
   const showNavigation = !!user && !publicRoute;
   useEffect(() => {
@@ -40,76 +177,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {wide && showNavigation && (
         <View
           style={{
-            width: 232,
-            padding: 24,
-            paddingTop: 36,
-            backgroundColor: C.bg,
+            width: 230,
+            padding: 22,
+            paddingTop: 32,
+            backgroundColor: C.white,
             borderRightWidth: 1,
             borderColor: C.line,
           }}
         >
           <Brand />
-          <View style={{ height: 48 }} />
+          <View style={{ height: 46 }} />
           <T variant="label" color={C.muted}>
-            YOUR EVERYDAY CARE
+            YOUR CARE, EVERY DAY
           </T>
-          <View style={{ gap: 6, marginTop: 18 }}>
-            {navigation.map((item) => (
-              <Pressable
-                key={item.path}
-                accessibilityRole="link"
-                accessibilityLabel={item.label}
-                accessibilityState={{ selected: active === item.path }}
-                onPress={() => router.navigate(item.path)}
-                style={{
-                  padding: 15,
-                  borderRadius: 16,
-                  backgroundColor: active === item.path ? C.ink : "transparent",
-                  flexDirection: "row",
-                  gap: 12,
-                }}
-              >
-                <Ionicons
-                  name={item.icon}
-                  size={20}
-                  color={active === item.path ? C.accent : C.muted}
-                />
-                <T color={active === item.path ? C.white : C.muted}>
-                  {item.label}
-                </T>
-              </Pressable>
-            ))}
-          </View>
-          <View style={{ flex: 1 }} />
-          <Companion size={140} />
-          <T variant="h3">Small steps. Better days.</T>
-          <T variant="small" color={C.muted}>
-            A little support for your everyday.
-          </T>
-        </View>
-      )}
-      <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
-      {!wide && showNavigation && (
-        <View
-          accessibilityLabel="Main navigation"
-          style={{
-            paddingHorizontal: 12,
-            paddingTop: 8,
-            paddingBottom: Math.max(10, insets.bottom),
-            backgroundColor: C.bg,
-            borderTopWidth: 1,
-            borderColor: C.line,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              backgroundColor: C.ink,
-              borderRadius: 24,
-              padding: 5,
-              minHeight: 66,
-            }}
-          >
+          <View style={{ gap: 7, marginTop: 18 }}>
             {navigation.map((item) => {
               const selected = active === item.path;
               return (
@@ -118,30 +199,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   accessibilityRole="link"
                   accessibilityLabel={item.label}
                   accessibilityState={{ selected }}
-                  onPress={() => router.navigate(item.path)}
+                  onPress={() => router.navigate(item.href)}
                   style={({ pressed }) => ({
-                    flex: 1,
-                    minHeight: 56,
-                    borderRadius: 19,
+                    padding: 14,
+                    borderRadius: 14,
+                    backgroundColor: selected
+                      ? C.mint
+                      : pressed
+                        ? C.pale
+                        : "transparent",
+                    flexDirection: "row",
                     alignItems: "center",
-                    justifyContent: "center",
-                    gap: 4,
-                    backgroundColor: selected ? "#FFFFFF13" : "transparent",
-                    opacity: pressed ? 0.7 : 1,
+                    gap: 12,
                   })}
                 >
                   <Ionicons
-                    name={item.icon}
-                    size={21}
-                    color={selected ? "#9AE8D8" : "#BDD0DC"}
+                    name={selected ? item.selectedIcon : item.icon}
+                    size={20}
+                    color={selected ? C.primary : C.muted}
                   />
                   <T
-                    variant="small"
-                    color={selected ? "#B9EEE1" : "#BDD0DC"}
+                    color={selected ? C.primary : C.muted}
                     style={{
-                      fontSize: 9,
-                      lineHeight: 14,
-                      fontFamily: "Inter_500Medium",
+                      fontFamily: selected
+                        ? "Inter_600SemiBold"
+                        : "Inter_500Medium",
                     }}
                   >
                     {item.label}
@@ -150,8 +232,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </View>
+          <View style={{ flex: 1 }} />
+          <Companion size={110} />
+          <T variant="h3">One step at a time.</T>
+          <T variant="small" color={C.muted}>
+            A little support for your everyday.
+          </T>
         </View>
       )}
+      <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
+      {!wide && showNavigation && <BottomNavigation active={active} />}
     </View>
   );
 }

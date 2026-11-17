@@ -1,5 +1,12 @@
 import { useCallback, useState } from "react";
-import { Platform, Share, View } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  View,
+} from "react-native";
 import {
   Button,
   C,
@@ -39,50 +46,68 @@ export default function Reports() {
   const { user } = useSession();
   const { data, loading, error } = useResource(useCallback(load, []));
   const [shareError, setShareError] = useState("");
+  const [review, setReview] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const recorded = (data?.history ?? []).filter((d) => d.status !== "pending");
   const confirmed = recorded.filter(
     (d) => d.status === "taken" && d.confirmation_source === "patient",
   ).length;
+  const message = data
+    ? [
+        "Adheronix — medication summary",
+        user?.full_names ?? "Patient",
+        "Generated " + new Date().toLocaleDateString("en-GB"),
+        "Patient-confirmed doses (last 7 days): " + confirmed,
+        ...data.medications.map(
+          (m) =>
+            medicationName(m) +
+            " — " +
+            dosage(m) +
+            " — " +
+            m.frequency +
+            " times daily",
+        ),
+        ...recorded.map(
+          (d) =>
+            d.scheduled_date +
+            " " +
+            displayTime(d.scheduled_time) +
+            " — " +
+            medicationName(d.medication) +
+            " — " +
+            d.status +
+            (d.notes ? " — " + d.notes : ""),
+        ),
+        "Patient-entered records and device observations. Not a diagnosis or a replacement for a clinical record.",
+      ].join("\n")
+    : "";
   async function share() {
-    if (!data) return;
-    const message = [
-      "Adheronix — medication summary",
-      user?.full_names ?? "Patient",
-      "Generated " + new Date().toLocaleDateString("en-GB"),
-      "Patient-confirmed doses (last 7 days): " + confirmed,
-      ...data.medications.map(
-        (m) =>
-          medicationName(m) +
-          " — " +
-          dosage(m) +
-          " — " +
-          m.frequency +
-          " times daily",
-      ),
-      ...recorded.map(
-        (d) =>
-          d.scheduled_date +
-          " " +
-          displayTime(d.scheduled_time) +
-          " — " +
-          medicationName(d.medication) +
-          " — " +
-          d.status +
-          (d.notes ? " — " + d.notes : ""),
-      ),
-      "Patient-entered records and device observations. Not a diagnosis or a replacement for a clinical record.",
-    ].join("\n");
+    if (!data || sharing) return;
+    setSharing(true);
+    setShareError("");
     try {
       if (Platform.OS === "web" && typeof window !== "undefined") {
         await window.navigator.clipboard.writeText(message);
         setShareError(
           "Summary copied. Review it before sharing with your clinician.",
         );
-      } else await Share.share({ message });
+      } else {
+        const result = await Share.share(
+          { title: "Adheronix medication summary", message },
+          { dialogTitle: "Share your medication summary" },
+        );
+        setShareError(
+          result.action === Share.dismissedAction
+            ? "Sharing cancelled. Your summary is still here."
+            : "Your device’s sharing options were opened. Choose an app there to continue.",
+        );
+      }
     } catch {
       setShareError(
         "Your device could not share this summary. You can still review it here.",
       );
+    } finally {
+      setSharing(false);
     }
   }
   return (
@@ -96,14 +121,17 @@ export default function Reports() {
             small
             variant="secondary"
             icon="share-outline"
-            label={Platform.OS === "web" ? "Copy summary" : "Share summary"}
+            label="Share summary"
             disabled={!data}
-            onPress={() => void share()}
+            onPress={() => {
+              setShareError("");
+              setReview(true);
+            }}
           />
         }
       />
       {error && <Notice message={error} error />}
-      {shareError && <Notice message={shareError} />}
+
       <View style={{ gap: 22, marginTop: 12 }}>
         {loading && !data ? (
           <Loading />
@@ -126,31 +154,48 @@ export default function Reports() {
                 </View>
                 <Chip label="Last 7 days" tone="green" />
               </Row>
-              <Row style={{ flexWrap: "wrap", gap: 45, marginTop: 10 }}>
-                <View>
-                  <T variant="display">{confirmed}</T>
-                  <T variant="small" color={C.muted}>
-                    Patient-confirmed doses
-                  </T>
-                </View>
-                <View>
-                  <T variant="display">{data?.medications.length ?? 0}</T>
-                  <T variant="small" color={C.muted}>
-                    Medication records
-                  </T>
-                </View>
-                <View>
-                  <T variant="display">
-                    {data?.devices.reduce(
-                      (n, d) => n + (d.latestEvent ? 1 : 0),
-                      0,
-                    ) ?? 0}
-                  </T>
-                  <T variant="small" color={C.muted}>
-                    Boxes with recent event records
-                  </T>
-                </View>
+              <Row style={{ gap: 12, alignItems: "stretch", marginTop: 12 }}>
+                {[
+                  {
+                    value: confirmed,
+                    label: "Patient-confirmed doses",
+                    note: "Last 7 days",
+                  },
+                  {
+                    value: data?.medications.length ?? 0,
+                    label: "Medication records",
+                    note: "Current list",
+                  },
+                ].map((metric) => (
+                  <View
+                    key={metric.label}
+                    style={{
+                      flex: 1,
+                      padding: 15,
+                      borderRadius: 16,
+                      backgroundColor: C.bg,
+                      gap: 5,
+                    }}
+                  >
+                    <T variant="display">{metric.value}</T>
+                    <T
+                      variant="small"
+                      style={{ fontFamily: "Inter_600SemiBold" }}
+                    >
+                      {metric.label}
+                    </T>
+                    <T variant="small" color={C.muted}>
+                      {metric.note}
+                    </T>
+                  </View>
+                ))}
               </Row>
+              {!recorded.length && (
+                <T variant="small" color={C.muted}>
+                  No dose entries in this period yet. This isn’t an assessment
+                  of your health or adherence.
+                </T>
+              )}
             </Card>
             <Card>
               <Row>
@@ -245,6 +290,72 @@ export default function Reports() {
           </>
         )}
       </View>
+      <Modal
+        visible={review}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReview(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#15374E66",
+            justifyContent: "flex-end",
+            padding: 16,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close summary preview"
+            style={{ flex: 1 }}
+            onPress={() => setReview(false)}
+          />
+          <View
+            accessibilityViewIsModal
+            style={{
+              maxHeight: "85%",
+              width: "100%",
+              maxWidth: 640,
+              alignSelf: "center",
+              borderRadius: 24,
+              backgroundColor: C.white,
+              padding: 22,
+              gap: 15,
+            }}
+          >
+            <Row style={{ justifyContent: "space-between" }}>
+              <T variant="h2">Review before sharing</T>
+              <Button
+                small
+                variant="ghost"
+                label="Close"
+                onPress={() => setReview(false)}
+              />
+            </Row>
+            <T variant="small" color={C.muted}>
+              This contains your name and medication records. Choose who you
+              want to share it with.
+            </T>
+            <ScrollView style={{ flexShrink: 1 }}>
+              <T selectable>{message}</T>
+            </ScrollView>
+            {!!shareError && <Notice message={shareError} />}
+            <Button
+              icon="share-outline"
+              loading={sharing}
+              label={
+                Platform.OS === "web"
+                  ? "Copy summary text"
+                  : "Choose an app to share"
+              }
+              onPress={() => void share()}
+            />
+            <T variant="small" color={C.muted}>
+              You can also press and hold the text to select and copy it.
+            </T>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

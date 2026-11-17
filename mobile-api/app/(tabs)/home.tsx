@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Button,
@@ -7,7 +8,6 @@ import {
   Card,
   Chip,
   Companion,
-  Empty,
   Loading,
   Notice,
   PageTitle,
@@ -20,25 +20,18 @@ import { useSession } from "../../components/session";
 import { useResource } from "../../hooks/use-resource";
 import { scheduleService } from "../../services/schedule.service";
 import { displayTime, medicationName } from "../../services/types";
-import { routineState } from "../../services/character-state";
+import { useCareProgress } from "../../components/care-progress";
 import { errorMessage } from "../../services/api";
-const load = async () => {
-  const [doses, adherence] = await Promise.all([
-    scheduleService.getUpcoming(),
-    scheduleService.getAdherence(),
-  ]);
-  return { doses, adherence };
-};
+const load = async () => ({ adherence: await scheduleService.getAdherence() });
 export default function Home() {
   const { user, refreshUnread } = useSession();
   const { data, loading, error, refresh } = useResource(load);
   const [acting, setActing] = useState(""),
     [actionError, setActionError] = useState("");
   const wide = useWindowDimensions().width >= 1180;
-  const doses = data?.doses ?? [],
-    taken = routineState(doses).confirmed,
+  const { doses, routine, refresh: refreshCare } = useCareProgress();
+  const taken = routine.confirmed,
     total = doses.length;
-  const routine = routineState(doses);
   const percent = total ? Math.round((taken / total) * 100) : 0;
   async function confirm(id: string, status: "taken" | "skipped") {
     setActing(id);
@@ -51,7 +44,7 @@ export default function Home() {
           ? "Confirmed by patient in Adheronix"
           : "Patient recorded this dose as skipped",
       );
-      await refresh();
+      await Promise.all([refresh(), refreshCare()]);
       await refreshUnread();
     } catch (e) {
       setActionError(errorMessage(e));
@@ -62,18 +55,16 @@ export default function Home() {
   return (
     <Screen>
       <PageTitle
-        eyebrow="A LITTLE SUPPORT, EVERY DAY"
+        eyebrow={new Date()
+          .toLocaleDateString("en-GB", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            timeZone: "Africa/Kigali",
+          })
+          .toUpperCase()}
         title={"Hello, " + (user?.full_names?.split(" ")[0] || "there") + "."}
-        body="Let’s make room for a steadier day."
-        action={
-          <Button
-            variant="secondary"
-            small
-            icon="add"
-            label="Add medication"
-            onPress={() => go("/add-medication")}
-          />
-        }
+        body="Here’s your day, at a glance."
       />
       {error && <Notice message={error} error />}
       {actionError && <Notice message={actionError} error />}
@@ -81,65 +72,120 @@ export default function Home() {
         <Loading />
       ) : (
         <View style={{ gap: 24 }}>
-          <View
+          <LinearGradient
+            colors={["#E3F5EF", "#F2FAF8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={{
-              backgroundColor: C.ink,
-              borderRadius: 28,
-              padding: wide ? 30 : 22,
+              borderRadius: 25,
+              borderWidth: 1,
+              borderColor: "#D2EAE2",
+              paddingHorizontal: 22,
+              paddingVertical: 18,
+              gap: 10,
               overflow: "hidden",
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 20,
             }}
           >
-            <View style={{ flex: 1, gap: 10 }}>
-              <T variant="label" color="#A5E6D7">
-                ONE DAY AT A TIME
-              </T>
-              <T variant="h2" color={C.white}>
-                {total
-                  ? taken +
-                    " of " +
-                    total +
-                    (total === 1 ? " dose confirmed." : " doses confirmed.")
-                  : "Your routine starts here."}
-              </T>
-              <T color="#C2D5E0" style={{ maxWidth: 460 }}>
-                {total
-                  ? routine.message
-                  : "Add the medications you’ve been prescribed, then choose the times that fit your prescription."}
-              </T>
+            <Row style={{ justifyContent: "space-between", gap: 10 }}>
+              <View style={{ flex: 1, gap: 8 }}>
+                <T variant="label" color={C.primary}>
+                  ONE DAY AT A TIME
+                </T>
+                {total ? (
+                  <>
+                    <Row style={{ alignItems: "baseline", gap: 7 }}>
+                      <T
+                        variant="display"
+                        color={C.ink}
+                        style={{ fontSize: 42, lineHeight: 48 }}
+                      >
+                        {taken}
+                      </T>
+                      <T
+                        color={C.muted}
+                        style={{ fontSize: 22, lineHeight: 32 }}
+                      >
+                        / {total}
+                      </T>
+                    </Row>
+                    <T
+                      variant="small"
+                      color={C.primary}
+                      style={{ fontFamily: "Inter_500Medium" }}
+                    >
+                      doses recorded today
+                    </T>
+                  </>
+                ) : (
+                  <>
+                    <T variant="h2" style={{ fontSize: 25, lineHeight: 32 }}>
+                      Your routine,{"\n"}your pace.
+                    </T>
+                    <T variant="small" color={C.primary}>
+                      A little support for your day.
+                    </T>
+                  </>
+                )}
+              </View>
+              <Companion
+                size={145}
+                mood={routine.mood}
+                style={{ marginRight: -5 }}
+              />
+            </Row>
+            <T color={C.muted} style={{ fontSize: 13, lineHeight: 21 }}>
+              {total
+                ? routine.message
+                : "Add the medication on your prescription whenever you’re ready."}
+            </T>
+            {total > 0 && (
+              <View
+                style={{
+                  height: 6,
+                  borderRadius: 4,
+                  backgroundColor: "#CFE8DF",
+                  marginTop: 3,
+                }}
+              >
+                <View
+                  style={{
+                    height: 6,
+                    borderRadius: 4,
+                    backgroundColor: C.success,
+                    width: (percent + "%") as `${number}%`,
+                  }}
+                />
+              </View>
+            )}
+            <Row style={{ justifyContent: "space-between", marginTop: 3 }}>
               <Pressable
                 accessibilityRole="link"
+                accessibilityLabel="Your care summary"
                 onPress={() => go("/reports")}
-                style={{ alignSelf: "flex-start", paddingVertical: 6 }}
+                style={{ paddingVertical: 7 }}
               >
-                <Row style={{ gap: 6 }}>
+                <Row style={{ gap: 5 }}>
                   <T
                     variant="small"
-                    color="#B6EDDF"
+                    color={C.primary}
                     style={{ fontFamily: "Inter_600SemiBold" }}
                   >
                     Your care summary
                   </T>
-                  <Ionicons name="arrow-forward" size={15} color="#B6EDDF" />
+                  <Ionicons name="arrow-forward" size={14} color={C.primary} />
                 </Row>
               </Pressable>
-            </View>
-            <View
-              style={{ width: 100, alignItems: "center", alignSelf: "center" }}
-            >
-              <Companion
-                size={130}
-                mood={routine.mood}
-                style={{ marginRight: -8 }}
-              />
-              <T variant="small" color="#A5E6D7">
-                {total ? percent + "% confirmed" : "Here for you"}
-              </T>
-            </View>
-          </View>
+              {total > 0 && (
+                <T
+                  variant="small"
+                  color={C.success}
+                  style={{ fontFamily: "Inter_600SemiBold" }}
+                >
+                  {percent}% recorded
+                </T>
+              )}
+            </Row>
+          </LinearGradient>
           <View
             style={{
               flexDirection: wide ? "row" : "column",
@@ -148,29 +194,48 @@ export default function Home() {
             }}
           >
             <View style={{ flex: wide ? 1.8 : undefined, gap: 18 }}>
-              <Row style={{ justifyContent: "space-between" }}>
-                <T variant="h2">Today’s medication</T>
-                <Chip
-                  label={new Date().toLocaleDateString("en-GB", {
-                    day: "numeric",
-                    month: "short",
-                  })}
+              <Row style={{ justifyContent: "space-between", gap: 10 }}>
+                <T variant="h2">Today’s plan</T>
+                <Button
+                  small
+                  variant="secondary"
+                  label="Add medicine"
+                  icon="add"
+                  onPress={() => go("/add-medication")}
                 />
               </Row>
               <Card style={{ padding: 0, gap: 0 }}>
                 {!doses.length ? (
-                  <Empty
-                    icon="medical-outline"
-                    title="A clearer day starts with a plan"
-                    body="Add your prescribed medication and its scheduled times. You can use Adheronix with or without a pill box."
-                    action={
-                      <Button
-                        label="Add your first medication"
-                        icon="add"
-                        onPress={() => go("/add-medication")}
-                      />
-                    }
-                  />
+                  <View style={{ padding: 23, gap: 13 }}>
+                    <Row style={{ gap: 11 }}>
+                      <View
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 13,
+                          backgroundColor: C.mint,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons
+                          name="medkit-outline"
+                          size={21}
+                          color={C.primary}
+                        />
+                      </View>
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <T variant="h3">A small start. A clearer day.</T>
+                        <T variant="small" color={C.muted}>
+                          Your first medication will appear here.
+                        </T>
+                      </View>
+                    </Row>
+                    <T variant="small" color={C.muted}>
+                      Use the details on your prescription. Your reminders and
+                      dose record will grow from there.
+                    </T>
+                  </View>
                 ) : (
                   doses.map((dose, i) => {
                     const done = dose.status === "taken",
@@ -292,10 +357,12 @@ export default function Home() {
                   })
                 )}
               </Card>
-              <T variant="small" color={C.muted}>
-                Only confirm doses you actually took. If you’re unsure about a
-                missed dose, follow your prescription or ask your clinician.
-              </T>
+              {doses.length > 0 && (
+                <T variant="small" color={C.muted}>
+                  Only confirm doses you actually took. If you’re unsure about a
+                  missed dose, follow your prescription or ask your clinician.
+                </T>
+              )}
             </View>
             <View style={{ flex: wide ? 1 : undefined, gap: 20 }}>
               <Card>
@@ -338,7 +405,7 @@ export default function Home() {
                     ? data.adherence.taken +
                       " recorded taken · " +
                       data.adherence.total_scheduled +
-                      " scheduled in this period"
+                      " doses due or recorded this week"
                     : "Your history will appear as you build your routine."}
                 </T>
                 <Button
@@ -348,20 +415,37 @@ export default function Home() {
                   onPress={() => go("/reports")}
                 />
               </Card>
-              <Card style={{ backgroundColor: C.pale, borderColor: C.line }}>
-                <Companion kind="assistant" size={76} />
-                <T variant="h3">A question on your mind?</T>
-                <T color={C.muted}>
-                  Find a little clarity about your routine with your Adheronix
-                  assistant.
-                </T>
-                <Button
-                  small
-                  variant="secondary"
-                  label="Ask your assistant"
-                  icon="arrow-forward"
-                  onPress={() => go("/ai")}
-                />
+              <Card style={{ backgroundColor: C.white }}>
+                <Row style={{ alignItems: "center", gap: 12 }}>
+                  <Companion kind="assistant" size={72} />
+                  <View style={{ flex: 1, gap: 5 }}>
+                    <T variant="h3">A question on your mind?</T>
+                    <T variant="small" color={C.muted}>
+                      A little clarity for your everyday.
+                    </T>
+                    <Pressable
+                      accessibilityRole="link"
+                      accessibilityLabel="Open your assistant"
+                      onPress={() => go("/ai")}
+                      style={{ paddingVertical: 7 }}
+                    >
+                      <Row style={{ gap: 5 }}>
+                        <T
+                          variant="small"
+                          color={C.primary}
+                          style={{ fontFamily: "Inter_600SemiBold" }}
+                        >
+                          Ask your assistant
+                        </T>
+                        <Ionicons
+                          name="arrow-forward"
+                          size={14}
+                          color={C.primary}
+                        />
+                      </Row>
+                    </Pressable>
+                  </View>
+                </Row>
               </Card>
               <Row style={{ paddingHorizontal: 6, alignItems: "flex-start" }}>
                 <Ionicons

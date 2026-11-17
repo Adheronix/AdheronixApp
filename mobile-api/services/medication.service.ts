@@ -1,3 +1,4 @@
+import { careChanged } from "./care-events";
 import api from "./api";
 import { Medication } from "./types";
 export interface MedicationInput {
@@ -15,15 +16,24 @@ export const medicationService = {
     return (await api.get<Medication>(`/medications/${id}`)).data;
   },
   async create(body: MedicationInput) {
-    return (await api.post<Medication>("/medications", body)).data;
+    const result = (await api.post<Medication>("/medications", body)).data;
+    careChanged();
+    return result;
   },
   async scanQR(body: MedicationInput) {
-    return (await api.post<Medication>("/medications/scan-qr", body)).data;
+    const result = (await api.post<Medication>("/medications/scan-qr", body))
+      .data;
+    careChanged();
+    return result;
   },
   async update(id: string, body: Partial<MedicationInput>) {
-    return (await api.patch<Medication>(`/medications/${id}`, body)).data;
+    const result = (await api.patch<Medication>(`/medications/${id}`, body))
+      .data;
+    careChanged();
+    return result;
   },
   async delete(id: string) {
     await api.delete(`/medications/${id}`);
+    careChanged();
   },
 };

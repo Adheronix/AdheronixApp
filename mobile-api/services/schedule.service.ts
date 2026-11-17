@@ -1,3 +1,4 @@
+import { careChanged } from "./care-events";
 import api from "./api";
 import { Adherence, Dose } from "./types";
 export const scheduleService = {
@@ -25,22 +26,28 @@ export const scheduleService = {
     return (await api.get<Adherence>("/medication-schedules/adherence")).data;
   },
   async create(medication_id: string, times: string[]) {
-    return (
+    const result = (
       await api.post<{ schedules: Dose[] }>("/medication-schedules", {
         medication_id,
         times,
         replace_pending: true,
       })
     ).data;
+    careChanged();
+    return result;
   },
   async markAsTaken(id: string, notes?: string) {
-    return (
+    const result = (
       await api.patch<Dose>(`/medication-schedules/${id}/taken`, { notes })
     ).data;
+    careChanged();
+    return result;
   },
   async updateStatus(id: string, status: Dose["status"], notes?: string) {
-    return (
+    const result = (
       await api.patch<Dose>(`/medication-schedules/${id}`, { status, notes })
     ).data;
+    careChanged();
+    return result;
   },
 };

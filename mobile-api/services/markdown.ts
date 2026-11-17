@@ -52,15 +52,44 @@ export function normalizeMarkdown(source: string): string {
 }
 
 export type MarkdownBlock = {
-  kind: "paragraph" | "heading" | "list" | "code";
+  kind: "paragraph" | "heading" | "list" | "code" | "table";
   text: string;
   marker?: string;
   level?: number;
+  headers?: string[];
+  rows?: string[][];
 };
+// Split only unescaped pipes outside inline code. Fences are handled separately.
+export function tableCells(line: string): string[] {
+  let source = line.trim();
+  if (source.startsWith("|")) source = source.slice(1);
+  if (source.endsWith("|") && !source.endsWith("\\|"))
+    source = source.slice(0, -1);
+  const cells: string[] = [];
+  let cell = "",
+    code = false;
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "\\" && source[i + 1] === "|") {
+      cell += "|";
+      i++;
+    } else if (ch === "`") {
+      code = !code;
+      cell += ch;
+    } else if (ch === "|" && !code) {
+      cells.push(cell.trim());
+      cell = "";
+    } else cell += ch;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
 export function markdownBlocks(source: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   let code: string[] | null = null;
-  for (const line of normalizeMarkdown(source).split("\n")) {
+  const lines = normalizeMarkdown(source).split("\n");
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
     if (/^\s*```/.test(line)) {
       if (code) {
         blocks.push({ kind: "code", text: code.join("\n") });
@@ -70,6 +99,33 @@ export function markdownBlocks(source: string): MarkdownBlock[] {
     }
     if (code) {
       code.push(line);
+      continue;
+    }
+    const headers = tableCells(line);
+    const separator = tableCells(lines[index + 1] ?? "");
+    if (
+      headers.length > 1 &&
+      headers.length === separator.length &&
+      separator.every((cell) => /^:?-{3,}:?$/.test(cell))
+    ) {
+      const rows: string[][] = [];
+      index++;
+      while (
+        index + 1 < lines.length &&
+        lines[index + 1].trim() &&
+        lines[index + 1].includes("|")
+      ) {
+        const cells = tableCells(lines[++index]);
+        // Preserve extra content rather than silently dropping a malformed cell.
+        rows.push(
+          headers.map((_, col) =>
+            col === headers.length - 1
+              ? cells.slice(col).join(" | ")
+              : (cells[col] ?? ""),
+          ),
+        );
+      }
+      blocks.push({ kind: "table", text: line, headers, rows });
       continue;
     }
     if (!line.trim()) {
