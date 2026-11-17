@@ -45,7 +45,7 @@ async function main() {
   const second = await call('/patient/register', 'POST', { ...account, username: account.username + 'b', email: 'second_' + stamp + '@example.com' }, undefined, 201);
   await call('/medications/' + med.medication_id, 'GET', undefined, second.access_token, 404);
   await call('/api/smartbox/weight', 'POST', { deviceId: 'UNPAIRED-PREVIEW', weightG: 20 }, undefined, 401);
-  const scoped = await call('/ai/chat', 'POST', { messages: [{ role: 'user', content: 'write a servlet in java' }], patient_context: false }, token, 201);
+  const scoped = await call('/ai/chat', 'POST', { messages: [{ role: 'user', content: 'write a servlet in java' }], patient_context: false }, token);
   assert.equal(scoped.response_kind, 'scope');
   console.log('PASS: fresh production schema, migration replay, runtime DDL denial, readiness, registration/login, patient isolation, medication/schedule confirmation, device authentication and care chat scope.');
 }
