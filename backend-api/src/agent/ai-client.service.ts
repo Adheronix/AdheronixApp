@@ -26,6 +26,7 @@ interface ChatCompletionMessage {
 }
 
 interface ChatCompletionResponse {
+  provider?: string;
   model?: string;
   choices?: Array<{
     message?: ChatCompletionMessage;
@@ -158,7 +159,11 @@ export class AiClientService {
           },
         );
 
-        return response.data;
+        return {
+          ...response.data,
+          model: response.data.model ?? model,
+          provider: provider.name,
+        };
       } catch (error) {
         if (axios.isAxiosError(error)) {
           const status = error.response?.status;
