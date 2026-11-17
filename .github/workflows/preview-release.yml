@@ -9,7 +9,7 @@ concurrency:
   group: preview-${{ github.ref }}
   cancel-in-progress: true
 env:
-  EXPO_PUBLIC_API_URL: https://adheronix-api.144-91-80-84.sslip.io
+  EXPO_PUBLIC_API_URL: https://adheronix-api.diamondhardware.co
 jobs:
   checks:
     runs-on: ubuntu-24.04

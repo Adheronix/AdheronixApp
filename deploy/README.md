@@ -70,7 +70,25 @@ requires its own Apple signing/build workflow.
 The GitHub workflow builds candidates on hosted runners without private release
 keys. After verifying a run's commit SHA and downloading its Android artifact,
 set `ADHERONIX_CANDIDATE_APK` to sign that candidate locally with the same script.
-The workflow currently targets the planned preview hostname
-`adheronix-api.144-91-80-84.sslip.io`. This is a build setting, not evidence that
+The workflow targets the dedicated Cloudflare preview hostname
+`adheronix-api.diamondhardware.co`. This is a build setting, not evidence that
 the VPS endpoint is deployed; keep the release draft until HTTPS and the packaged
 app's account flow have been verified there.
+
+## Current preview routing
+
+The preview API uses `https://adheronix-api.diamondhardware.co`, routed by the
+existing remotely managed Cloudflare connector to `http://127.0.0.1:3260`.
+Keep every existing Diamond ingress entry and the final catch-all unchanged.
+This route does not need a proxy restart, a new public host port, or changes to
+Diamond's containers. TLS terminates at Cloudflare; the origin hop stays on
+the VPS loopback interface. The hostname is temporary until an Adheronix-owned
+domain is available. The apps remain separate Compose projects, but still share
+the VPS and Cloudflare connector and therefore share those failure domains.
+
+Administrative recovery currently uses a separately IP-restricted temporary
+SSH hostname through the same connector, existing SSH keys and pinned host key.
+Its source-IP allowlist must be updated through Cloudflare if the administrator's
+public IP changes. Do not broaden it to all source addresses. VPN autostart is
+not required. Remove only that administrative ingress/DNS/rule when it is no
+longer needed; preserve the API route and all Diamond routes.
