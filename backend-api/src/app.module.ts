@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
+import { ReadinessController } from './readiness.controller';
 import { AppService } from './app.service';
 import { PatientModule } from './patient/patient.module';
 import { MedicationModule } from './medication/medication.module';
@@ -47,7 +48,7 @@ import { SmartboxModule } from './smartbox/smartbox.module';
     HealthScoreModule,
     SmartboxModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, ReadinessController],
   providers: [AppService],
 })
 export class AppModule {}
