@@ -65,6 +65,23 @@ Cloudflare quick-tunnel hostnames and preview sessions are temporary.
 
 ## Prototype limitations
 
+### Verification status — 17 November 2026
+
+The saved project compiles and runs in Wokwi. Changing the HX711 load from
+0.05 to 0.04 kg produced a measured drop from 50.0 to 38.1 g and queued one
+removal observation. This was reproduced in both the built-in browser and Chrome.
+The bridge boundary tests pass, and independent HTTPS requests through both
+Cloudflare and ngrok retrieve the synthetic device schedule. A separate manual
+HTTP smoke test wrote weight/removal observations and verified that patient dose
+confirmation stayed unchanged.
+
+Full simulator-to-app delivery is **not yet verified**. The simulator retrieved
+the schedule once, but subsequent requests failed and Wokwi displayed an IoT
+gateway connection error in both browsers. No successful firmware-originated
+weight/removal POST has been observed. Manual HTTP checks do not prove that path.
+Recheck Wokwi gateway connectivity before treating this prototype as a live app
+integration; keep queued observations visible and use synthetic data only.
+
 This is not production firmware or a verified ingestion sensor. Real HX711 hardware
 needs electrical review, calibration, suitable load-cell resolution, noise/drift
 testing and container-movement detection. Ensure 3.3 V-safe digital levels for the
