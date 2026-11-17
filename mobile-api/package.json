@@ -11,7 +11,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "postinstall": "patch-package && node scripts/setup-workspace-links.js",
+    "postinstall": "node scripts/apply-workspace-patches.cjs && node scripts/setup-workspace-links.js",
     "lint": "expo lint",
     "test:formatting": "node --test tests/markdown.test.cjs",
     "test:ui": "node --test tests/*.test.cjs"
