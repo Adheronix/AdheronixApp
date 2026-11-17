@@ -1,0 +1,104 @@
+name: Validate and package preview
+on:
+  push:
+    branches: [codex/wokwi-smartmedibox]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  EXPO_PUBLIC_API_URL: https://adheronix-api.144-91-80-84.sslip.io
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v6
+        with: {node-version: '22', cache: npm}
+      - run: npm ci --no-audit --no-fund
+      - run: npm test --workspace=backend-api -- --runInBand
+      - run: npm run build --workspace=backend-api
+      - run: npx tsc --noEmit
+        working-directory: mobile-api
+      - run: npx eslint . --max-warnings=0
+        working-directory: mobile-api
+      - run: npm run test:ui --workspace=mobile-api
+      - run: node hardware/smartbox-wokwi-v2/preview-bridge.test.cjs
+  backend:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with: {persist-credentials: false}
+      - name: Build isolated backend image
+        run: docker build -f backend-api/Dockerfile -t adheronix-api:${{ github.sha }} .
+      - name: Generate disposable test configuration
+        run: |
+          python3 - <<'PY'
+          import secrets, os
+          values={'ADHERONIX_IMAGE':'adheronix-api:'+os.environ['GITHUB_SHA']}
+          for key in ['POSTGRES_PASSWORD','ADHERONIX_DB_PASSWORD','JWT_SECRET','ADMIN_SETUP_KEY']:
+              values[key]=secrets.token_hex(32)
+          with open('deploy/.env','w') as f:
+              f.write('\n'.join(k+'='+v for k,v in values.items())+'\n')
+          os.chmod('deploy/.env',0o600)
+          PY
+      - name: Apply fresh schema and check migration replay
+        working-directory: deploy
+        run: |
+          docker compose up -d --wait database
+          docker compose --profile tools run --rm migrate
+          docker compose --profile tools run --rm migrate
+          docker compose up -d --wait api
+      - name: Verify production app flows and database isolation
+        working-directory: deploy
+        run: docker compose exec -T -e ALLOW_PREVIEW_SMOKE_TEST=yes api node backend-api/scripts/smoke-preview.cjs
+      - name: Export tested backend image
+        run: |
+          mkdir release-output
+          docker save adheronix-api:${{ github.sha }} | gzip > release-output/adheronix-backend-image.tar.gz
+          sha256sum release-output/adheronix-backend-image.tar.gz > release-output/backend-image.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ github.sha }}
+          path: release-output/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Remove only disposable CI containers
+        if: always()
+        working-directory: deploy
+        run: docker compose down --volumes
+  android:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v6
+        with: {node-version: '22', cache: npm}
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - run: npm ci --no-audit --no-fund
+      - name: Generate Android project
+        working-directory: mobile-api
+        env:
+          EXPO_NO_DOTENV: '1'
+        run: npx expo prebuild --platform android --no-install
+      - name: Build standalone candidate (no private release key on runner)
+        working-directory: mobile-api/android
+        env:
+          NODE_ENV: production
+          EXPO_NO_DOTENV: '1'
+        run: ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a,x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-candidate-${{ github.sha }}
+          path: mobile-api/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7
+          if-no-files-found: error
