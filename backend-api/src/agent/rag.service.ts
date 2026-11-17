@@ -28,6 +28,19 @@ export class RagService implements OnModuleInit {
   async ensureTableExists() {
     if (this.tableCreated) return;
 
+    // Production schema is managed by versioned migrations, never runtime DDL.
+    if (process.env.NODE_ENV === 'production') {
+      const rows: Array<{ present: string | null }> = await this.dataSource.query(
+        "SELECT to_regclass('public.medical_knowledge')::text AS present",
+      );
+      if (!rows[0]?.present) {
+        throw new Error('Medical knowledge schema missing; run migrations before startup.');
+      }
+      this.tableCreated = true;
+      return;
+    }
+
+
     try {
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS medical_knowledge (

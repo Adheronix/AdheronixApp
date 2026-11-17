@@ -32,11 +32,21 @@ interface AuthenticatedRequest extends Request {
 
 @ApiTags('medications')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('medications')
 export class MedicationController {
   constructor(private readonly medicationService: MedicationService) {}
 
   @UseGuards(JwtAuthGuard)
+  @Post()
+  @ApiOperation({ summary: 'Add a patient-entered medication record' })
+  create(@Body() dto: CreateMedicationDto, @Req() req: AuthenticatedRequest) {
+    return this.medicationService.createFromQR(req.user.patient_id, {
+      ...dto,
+      source: 'patient',
+    });
+  }
+
   @Post('scan-qr')
   @ApiOperation({ summary: 'Store medication info from a scanned QR payload' })
   @ApiOkResponse({

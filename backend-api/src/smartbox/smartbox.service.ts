@@ -1,4 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -12,7 +18,9 @@ import { NotificationType } from '../notification/notification.entity';
 import { NotificationService } from '../notification/notification.service';
 import { Patient } from '../patient/patient.entity';
 import { DoseEventDto } from './dto/dose-event.dto';
+import { WeightReportDto } from './dto/weight-report.dto';
 import { SmartboxDoseEvent } from './smartbox-dose-event.entity';
+import { SmartboxWeightReport } from './smartbox-weight-report.entity';
 
 @Injectable()
 export class SmartboxService {
@@ -21,6 +29,8 @@ export class SmartboxService {
   constructor(
     @InjectRepository(SmartboxDoseEvent)
     private readonly eventRepository: Repository<SmartboxDoseEvent>,
+    @InjectRepository(SmartboxWeightReport)
+    private readonly weightRepository: Repository<SmartboxWeightReport>,
     @InjectRepository(Patient)
     private readonly patientRepository: Repository<Patient>,
     @InjectRepository(MedicationInfo)
@@ -34,12 +44,18 @@ export class SmartboxService {
 
   validateDeviceToken(authorization?: string) {
     const expected = this.configService.get<string>('SMARTBOX_API_KEY');
-    if (!expected) {
-      return;
+    const token = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    if (!expected || !token) {
+      throw new UnauthorizedException(
+        'Smartbox device authentication required',
+      );
     }
-
-    const token = authorization?.replace(/^Bearer\s+/i, '').trim();
-    if (token !== expected) {
+    const received = Buffer.from(token);
+    const configured = Buffer.from(expected);
+    if (
+      received.length !== configured.length ||
+      !timingSafeEqual(received, configured)
+    ) {
       throw new UnauthorizedException('Invalid smartbox device token');
     }
   }
@@ -61,7 +77,7 @@ export class SmartboxService {
       weight_before: dto.weightBefore ?? null,
       weight_after: dto.weightAfter ?? null,
       weight_left_g: dto.weightLeftG,
-      score_impact: dto.scoreImpact ?? (dto.confirmed ? 15 : 0),
+      score_impact: 0,
       raw_payload: dto as unknown as Record<string, unknown>,
       patient,
     });
@@ -74,7 +90,7 @@ export class SmartboxService {
     );
 
     return {
-      status: saved.confirmed ? 'verified' : 'unconfirmed',
+      status: saved.confirmed ? 'removal_detected' : 'uncertain',
       received: true,
       event: this.toClientEvent(saved),
       scoreUpdated,
@@ -82,6 +98,12 @@ export class SmartboxService {
   }
 
   async recordDemoDose(patientId: string) {
+    if (
+      this.configService.get<string>('NODE_ENV') === 'production' ||
+      this.configService.get<string>('SMARTBOX_DEMO_ENABLED') !== 'true'
+    ) {
+      throw new ForbiddenException('Smartbox demo doses are disabled');
+    }
     const schedule = await this.findBestDoseSchedule(patientId);
     const medication =
       schedule?.medication ??
@@ -141,18 +163,14 @@ export class SmartboxService {
   }
 
   async getLatestForPatient(patientId?: string) {
-    const event =
-      (patientId
-        ? await this.eventRepository.findOne({
-            where: { patient: { patient_id: patientId } },
-            relations: ['patient'],
-            order: { received_at: 'DESC' },
-          })
-        : null) ??
-      (await this.eventRepository.findOne({
-        relations: ['patient'],
-        order: { received_at: 'DESC' },
-      }));
+    if (!patientId) {
+      throw new UnauthorizedException('Patient identity required');
+    }
+    const event = await this.eventRepository.findOne({
+      where: { patient: { patient_id: patientId } },
+      relations: ['patient'],
+      order: { received_at: 'DESC' },
+    });
 
     if (!event) {
       return {
@@ -162,6 +180,58 @@ export class SmartboxService {
     }
 
     return this.toClientEvent(event);
+  }
+
+  async recordWeightReport(dto: WeightReportDto): Promise<{
+    status: string;
+    received: boolean;
+    reportId?: string;
+    patientId?: string;
+  }> {
+    const patient = await this.resolvePatient(dto.deviceId);
+
+    const report = this.weightRepository.create({
+      device_id: dto.deviceId,
+      weight_g: dto.weightG,
+      pills_est: dto.pillsEst ?? null,
+      source: dto.source ?? 'loadcell',
+      patient,
+    });
+    const saved = await this.weightRepository.save(report);
+
+    return {
+      status: 'ok',
+      received: true,
+      reportId: saved.report_id,
+      patientId: patient?.patient_id,
+    };
+  }
+
+  async getLatestWeight(deviceId: string, patientId: string) {
+    if (!patientId) {
+      throw new UnauthorizedException('Patient identity required');
+    }
+    const report = await this.weightRepository.findOne({
+      where: { device_id: deviceId, patient: { patient_id: patientId } },
+      order: { reported_at: 'DESC' },
+    });
+
+    if (!report) {
+      return {
+        status: 'waiting',
+        message: `No weight reports from ${deviceId} yet`,
+      };
+    }
+
+    return {
+      status: 'ok',
+      deviceId: report.device_id,
+      weightG: report.weight_g,
+      pillsEst: report.pills_est,
+      source: report.source,
+      reportedAt: report.reported_at.toISOString(),
+      patientId: report.patient?.patient_id,
+    };
   }
 
   async getDeviceSchedule(deviceId: string): Promise<string> {
@@ -208,14 +278,36 @@ export class SmartboxService {
       ]) ??
       '08:30';
 
+    const doseTakenToday =
+      (await this.countTakenToday(
+        patient.patient_id,
+        medication.medication_id,
+      )) > 0;
+
     return this.scheduleText({
       medicine: parsed.name,
       dosage: parsed.dosage,
       condition: parsed.condition,
       scheduledTime,
+      scheduledDate: schedule?.scheduled_date,
       pillsRemaining: parsed.pillsRemaining,
       totalPills: parsed.totalPills,
       pillWeightG: parsed.pillWeightG,
+      doseTakenToday,
+    });
+  }
+
+  private async countTakenToday(patientId: string, medicationId?: string) {
+    const today = new Date().toISOString().split('T')[0];
+    return this.scheduleRepository.count({
+      where: {
+        patient: { patient_id: patientId },
+        status: IntakeStatus.TAKEN,
+        scheduled_date: today,
+        ...(medicationId
+          ? { medication: { medication_id: medicationId } }
+          : {}),
+      },
     });
   }
 
@@ -223,10 +315,23 @@ export class SmartboxService {
     deviceId: string,
     patientId?: string,
   ): Promise<Patient | null> {
+    const demoEnabled =
+      this.configService.get<string>('NODE_ENV') !== 'production' &&
+      this.configService.get<string>('SMARTBOX_DEMO_ENABLED') === 'true';
+    const mappedPatientId = this.patientIdFromDeviceMap(deviceId);
+    if (
+      patientId &&
+      patientId !== mappedPatientId &&
+      (!demoEnabled || mappedPatientId !== undefined)
+    ) {
+      throw new ForbiddenException('Device is not assigned to this patient');
+    }
     const resolvedPatientId =
-      patientId ??
-      this.patientIdFromDeviceMap(deviceId) ??
-      this.configService.get<string>('SMARTBOX_DEMO_PATIENT_ID');
+      mappedPatientId ??
+      (demoEnabled
+        ? (patientId ??
+          this.configService.get<string>('SMARTBOX_DEMO_PATIENT_ID'))
+        : undefined);
 
     if (!resolvedPatientId) {
       return null;
@@ -262,7 +367,9 @@ export class SmartboxService {
           (candidate.scheduled_date === today &&
             candidate.scheduled_time.slice(0, 5) >= currentTime),
       ) ??
-      pendingSchedules.find((candidate) => candidate.scheduled_date === today) ??
+      pendingSchedules.find(
+        (candidate) => candidate.scheduled_date === today,
+      ) ??
       pendingSchedules[0]
     );
   }
@@ -303,7 +410,9 @@ export class SmartboxService {
   }
 
   private patientIdFromDeviceMap(deviceId: string): string | undefined {
-    const rawMap = this.configService.get<string>('SMARTBOX_DEVICE_PATIENT_MAP');
+    const rawMap = this.configService.get<string>(
+      'SMARTBOX_DEVICE_PATIENT_MAP',
+    );
     if (!rawMap) {
       return undefined;
     }
@@ -332,8 +441,11 @@ export class SmartboxService {
   private extractMedicationDisplay(medication: MedicationInfo) {
     const prescription = medication.prescription;
     const name =
-      this.extractFirstString(prescription, ['name', 'medicine', 'medication']) ??
-      'Medication';
+      this.extractFirstString(prescription, [
+        'name',
+        'medicine',
+        'medication',
+      ]) ?? 'Medication';
     const dosage =
       this.extractFirstString(prescription, [
         'dose',
@@ -394,8 +506,8 @@ export class SmartboxService {
       }
     }
 
-    const nested = Object.values(record).flatMap((candidate) =>
-      Array.isArray(candidate) ? candidate : [candidate],
+    const nested = Object.values(record).flatMap((candidate): unknown[] =>
+      Array.isArray(candidate) ? (candidate as unknown[]) : [candidate],
     );
 
     for (const candidate of nested) {
@@ -430,8 +542,8 @@ export class SmartboxService {
       }
     }
 
-    const nested = Object.values(record).flatMap((candidate) =>
-      Array.isArray(candidate) ? candidate : [candidate],
+    const nested = Object.values(record).flatMap((candidate): unknown[] =>
+      Array.isArray(candidate) ? (candidate as unknown[]) : [candidate],
     );
 
     for (const candidate of nested) {
@@ -449,23 +561,39 @@ export class SmartboxService {
     dosage: string;
     condition: string;
     scheduledTime: string;
+    scheduledDate?: string;
     pillsRemaining: number;
     totalPills: number;
     pillWeightG: number;
+    doseTakenToday?: boolean;
   }) {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}`;
+
     return [
       `medicine=${this.cleanScheduleValue(data.medicine)}`,
       `dosage=${this.cleanScheduleValue(data.dosage)}`,
       `condition=${this.cleanScheduleValue(data.condition)}`,
       `scheduledTime=${this.cleanScheduleValue(data.scheduledTime)}`,
+      `scheduledDate=${data.scheduledDate ?? today}`,
       `pillsRemaining=${Math.max(0, Math.round(data.pillsRemaining))}`,
       `totalPills=${Math.max(0, Math.round(data.totalPills))}`,
       `pillWeightG=${Math.max(0.1, data.pillWeightG).toFixed(1)}`,
+      `doseTakenToday=${data.doseTakenToday ? 1 : 0}`,
+      `serverDate=${today}`,
+      `serverTime=${currentTime}`,
     ].join('\n');
   }
 
   private cleanScheduleValue(value: string) {
-    return value.replace(/[\r\n=]/g, ' ').trim().slice(0, 48);
+    return value
+      .replace(/[\r\n=]/g, ' ')
+      .trim()
+      .slice(0, 48);
   }
 
   private resolveTimestamp(timestamp?: string): Date {
@@ -486,271 +614,62 @@ export class SmartboxService {
   }
 
   private async applyDoseSideEffects(event: SmartboxDoseEvent) {
-    if (!event.patient) {
-      return false;
-    }
-
-    try {
+    if (event.patient) {
       await this.notificationService.create(event.patient.patient_id, {
-        title: event.confirmed
-          ? 'Smart Box dose verified'
-          : 'Smart Box dose unconfirmed',
-        message: event.confirmed
-          ? `Bin ${event.bin_index + 1} dose was verified by the smart medbox.`
-          : `Bin ${event.bin_index + 1} changed, but the patient did not confirm in time.`,
-        type: event.confirmed
-          ? NotificationType.MEDICATION_UPDATE
-          : NotificationType.SYSTEM_ALERT,
+        title: 'Pill box activity recorded',
+        message:
+          'Your pill box reported activity. Review your daily plan and confirm any dose you actually took.',
+        type: NotificationType.MEDICATION_UPDATE,
         metadata: {
-          source: 'smartbox',
+          source: 'device',
           device_id: event.device_id,
           event_id: event.event_id,
-          weight_left_g: event.weight_left_g,
+          requires_patient_confirmation: true,
         },
       });
-
-      if (event.confirmed) {
-        await this.markMatchingScheduleTaken(event);
-        await this.healthScoreService.onDoseTaken(
-          event.patient.patient_id,
-          100,
-          true,
-        );
-      } else {
-        await this.healthScoreService.onDoseMissed(
-          event.patient.patient_id,
-          0,
-          false,
-          1,
-        );
-      }
-
-      return true;
-    } catch (error) {
-      this.logger.warn(
-        `Smartbox side effects failed for event ${event.event_id}: ${(error as Error).message}`,
-      );
-      return false;
     }
+    // Physical removal is telemetry, not a patient confirmation or score update.
+    return false;
   }
 
-  private async markMatchingScheduleTaken(event: SmartboxDoseEvent) {
-    if (!event.patient) {
-      return;
+  async listDevicesForPatient(patientId: string) {
+    const map =
+      this.configService.get<string>('SMARTBOX_DEVICE_PATIENT_MAP') ?? '{}';
+    let ids: string[];
+    try {
+      ids = Object.keys(JSON.parse(map) as Record<string, string>);
+    } catch {
+      ids = map.split(',').map((entry) => entry.split(':')[0].trim());
     }
-
-    let schedule = await this.findScheduleForEvent(event);
-    if (!schedule) {
-      schedule = await this.createScheduleFromEvent(event);
-    }
-
-    if (!schedule) {
-      this.logger.warn(
-        `No matching schedule found for smartbox event ${event.event_id}`,
-      );
-      return;
-    }
-
-    schedule.status = IntakeStatus.TAKEN;
-    schedule.taken_at = event.dose_timestamp;
-    schedule.notes = `Verified by Smart Box ${event.device_id}, bin ${event.bin_index + 1}`;
-    await this.scheduleRepository.save(schedule);
-
-    const remaining =
-      typeof event.raw_payload?.pillsRemaining === 'number'
-        ? event.raw_payload.pillsRemaining
-        : undefined;
-    if (typeof remaining === 'number') {
-      await this.updateMedicationPillCount(schedule.medication, remaining);
-    }
-  }
-
-  private async findScheduleForEvent(event: SmartboxDoseEvent) {
-    if (!event.patient) {
-      return undefined;
-    }
-
-    const today = event.dose_timestamp.toISOString().split('T')[0];
-    const schedules = await this.scheduleRepository.find({
-      where: {
-        patient: { patient_id: event.patient.patient_id },
-        status: In([IntakeStatus.PENDING, IntakeStatus.MISSED]),
-      },
-      relations: ['medication'],
-      order: { scheduled_date: 'ASC', scheduled_time: 'ASC' },
-      take: 50,
-    });
-
-    const eventMedicine =
-      typeof event.raw_payload?.medicine === 'string'
-        ? this.normalizeText(event.raw_payload.medicine)
-        : undefined;
-    const eventTime =
-      typeof event.raw_payload?.scheduledTime === 'string'
-        ? this.normalizeScheduleTime(event.raw_payload.scheduledTime)
-        : undefined;
-
-    const matchesMedicine = (schedule: MedicationSchedule) => {
-      if (!eventMedicine) {
-        return true;
-      }
-      const parsed = this.extractMedicationDisplay(schedule.medication);
-      return this.normalizeText(parsed.name) === eventMedicine;
-    };
-
-    return (
-      schedules.find(
-        (schedule) =>
-          schedule.scheduled_date === today &&
-          (!eventTime ||
-            this.normalizeScheduleTime(schedule.scheduled_time) === eventTime) &&
-          matchesMedicine(schedule),
-      ) ??
-      schedules.find(
-        (schedule) => schedule.scheduled_date === today && matchesMedicine(schedule),
-      ) ??
-      schedules.find(matchesMedicine) ??
-      schedules[0]
+    const ownIds = ids.filter(
+      (id) => this.patientIdFromDeviceMap(id) === patientId,
     );
-  }
-
-  private async createScheduleFromEvent(event: SmartboxDoseEvent) {
-    if (!event.patient) {
-      return undefined;
-    }
-
-    const medicineName =
-      typeof event.raw_payload?.medicine === 'string'
-        ? event.raw_payload.medicine.trim()
-        : '';
-    if (
-      !medicineName ||
-      medicineName.toLowerCase() === 'no medication' ||
-      medicineName.toLowerCase() === 'syncing'
-    ) {
-      return undefined;
-    }
-
-    const normalizedEventName = this.normalizeText(medicineName);
-    const patientMedications = await this.medicationRepository.find({
-      where: { patient: { patient_id: event.patient.patient_id } },
-      order: { updated_at: 'DESC' },
-    });
-
-    let medication = patientMedications.find((med) => {
-      const parsed = this.extractMedicationDisplay(med);
-      return this.normalizeText(parsed.name) === normalizedEventName;
-    });
-
-    const pillsRemaining =
-      typeof event.raw_payload?.pillsRemaining === 'number'
-        ? event.raw_payload.pillsRemaining
-        : 0;
-    const weightLeftG =
-      typeof event.raw_payload?.weightLeftG === 'number'
-        ? event.raw_payload.weightLeftG
-        : 0;
-    const dosage =
-      typeof event.raw_payload?.dosage === 'string'
-        ? event.raw_payload.dosage
-        : '';
-    const condition =
-      typeof event.raw_payload?.condition === 'string'
-        ? event.raw_payload.condition
-        : '';
-
-    if (!medication) {
-      const totalPills = pillsRemaining > 0 ? pillsRemaining : 1;
-      const pillWeightG =
-        pillsRemaining > 0 && weightLeftG > 0
-          ? weightLeftG / pillsRemaining
-          : 5;
-
-      medication = this.medicationRepository.create({
-        patient: event.patient,
-        prescription: {
-          name: medicineName,
-          dose: dosage,
-          condition,
-          pillsRemaining: Math.max(0, Math.round(pillsRemaining)),
-          totalPills: Math.max(0, Math.round(totalPills)),
-          pillWeightG,
-        },
-        intake_recommendation: 'As prescribed',
-        period: '30 days',
-        source: 'smartbox',
-        frequency: 1,
-      });
-      medication = await this.medicationRepository.save(medication);
-    }
-
-    const today = event.dose_timestamp.toISOString().split('T')[0];
-    const scheduledTime =
-      typeof event.raw_payload?.scheduledTime === 'string' &&
-      event.raw_payload.scheduledTime.match(/\d{1,2}:\d{2}/)
-        ? this.normalizeScheduleTime(event.raw_payload.scheduledTime)
-        : `${event.dose_timestamp.getHours().toString().padStart(2, '0')}:${event.dose_timestamp.getMinutes().toString().padStart(2, '0')}`;
-
-    const existing = await this.scheduleRepository.findOne({
-      where: {
-        medication: { medication_id: medication.medication_id },
-        scheduled_date: today,
-        scheduled_time: scheduledTime,
-      },
-    });
-
-    if (existing) {
-      existing.medication = medication;
-      return existing;
-    }
-
-    const schedule = this.scheduleRepository.create({
-      patient: event.patient,
-      medication,
-      scheduled_date: today,
-      scheduled_time: scheduledTime,
-      status: IntakeStatus.PENDING,
-    });
-
-    return this.scheduleRepository.save(schedule);
-  }
-
-  private async updateMedicationPillCount(
-    medication: MedicationInfo | undefined,
-    pillsRemaining: number,
-  ) {
-    if (!medication) {
-      return;
-    }
-
-    medication.prescription = {
-      ...(medication.prescription ?? {}),
-      pillsRemaining: Math.max(0, Math.round(pillsRemaining)),
-    };
-    await this.medicationRepository.save(medication);
-  }
-
-  private normalizeText(value: string) {
-    return value.trim().toLowerCase().replace(/\s+/g, ' ');
-  }
-
-  private normalizeScheduleTime(value: string) {
-    const match = value.match(/(\d{1,2}):(\d{2})/);
-    if (!match) {
-      return value.trim();
-    }
-    return `${match[1].padStart(2, '0')}:${match[2]}`;
+    return Promise.all(
+      ownIds.map(async (deviceId) => ({
+        deviceId,
+        latestWeight: await this.getLatestWeight(deviceId, patientId),
+        latestEvent: await this.eventRepository
+          .findOne({
+            where: { device_id: deviceId, patient: { patient_id: patientId } },
+            order: { received_at: 'DESC' },
+          })
+          .then((event) => (event ? this.toClientEvent(event) : null)),
+      })),
+    );
   }
 
   private toClientEvent(event: SmartboxDoseEvent) {
     return {
-      status: event.confirmed ? 'verified' : 'unconfirmed',
+      status: event.confirmed ? 'removal_detected' : 'uncertain',
       eventId: event.event_id,
       deviceId: event.device_id,
       binIndex: event.bin_index,
       timestamp: event.dose_timestamp.toISOString(),
-      confirmed: event.confirmed,
-      verified: event.confirmed,
+      confirmed: false,
+      verified: false,
+      source: 'device',
+      deviceConfirmed: event.confirmed,
+      patientConfirmed: false,
       weightBefore: event.weight_before,
       weightAfter: event.weight_after,
       weightLeftG: event.weight_left_g,

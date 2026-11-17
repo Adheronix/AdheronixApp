@@ -1,3 +1,6 @@
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UserRole } from '../auth/user-role.enum';
 import {
   Controller,
   Post,
@@ -319,6 +322,8 @@ export class AgentController {
     };
   }
 
+  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard)
   @Post('knowledge/seed')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

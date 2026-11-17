@@ -1,295 +1,467 @@
+import { useState } from "react";
+import { Pressable, View, useWindowDimensions } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    Platform,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  Button,
+  C,
+  Card,
+  Chip,
+  Companion,
+  Loading,
+  Notice,
+  PageTitle,
+  Row,
+  Screen,
+  T,
+  go,
+} from "../../components/ui";
+import { useSession } from "../../components/session";
+import { useResource } from "../../hooks/use-resource";
 import { scheduleService } from "../../services/schedule.service";
-import { authService } from "../../services/auth.service";
-import { notificationService } from "../../services/notification.service";
-import Animated, { FadeInUp } from "react-native-reanimated";
-
-const { width } = Dimensions.get("window");
-const GRID_SPACING = 15;
-const MODULE_SIZE = (width - 40 - GRID_SPACING) / 2;
-
-// Simple visual trend indicator using standard Views
-const VisualTrend = ({ color = "#E2E8F0" }) => {
-    return (
-        <View style={styles.trendContainer}>
-            <View style={[styles.trendBar, { height: '40%', backgroundColor: color }]} />
-            <View style={[styles.trendBar, { height: '70%', backgroundColor: color }]} />
-            <View style={[styles.trendBar, { height: '50%', backgroundColor: color }]} />
-            <View style={[styles.trendBar, { height: '90%', backgroundColor: color }]} />
-        </View>
-    );
-};
-
-export default function HomeScreen() {
-    const router = useRouter();
-    const [user, setUser] = useState<any>(null);
-    const [status, setStatus] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [unreadCount, setUnreadCount] = useState<number>(0);
-
-    const fetchData = async () => {
-        try {
-            const userData = await authService.getUser();
-            setUser(userData);
-            const [stats, unread] = await Promise.all([
-                scheduleService.getStatus(),
-                notificationService.getUnreadCount(),
-            ]);
-            setStatus(stats);
-            setUnreadCount(unread);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
-
-    useEffect(() => { fetchData(); }, []);
-
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchData();
-    };
-
-    const taken = status?.medications_taken_today || 0;
-    const pending = status?.medications_pending || 0;
-    const missed = status?.medications_missed || 0;
-    const total = status?.total_scheduled || 0;
-    const adherence = total > 0 ? Math.round((taken / total) * 100) : 0;
-
-    if (loading) {
-        return (
-            <View style={[styles.container, styles.centered]}>
-                <ActivityIndicator size="small" color="#000" />
-            </View>
-        );
+import { displayTime, medicationName } from "../../services/types";
+import { useCareProgress } from "../../components/care-progress";
+import { errorMessage } from "../../services/api";
+const load = async () => ({ adherence: await scheduleService.getAdherence() });
+export default function Home() {
+  const { user, refreshUnread } = useSession();
+  const { data, loading, error, refresh } = useResource(load);
+  const [acting, setActing] = useState(""),
+    [actionError, setActionError] = useState("");
+  const wide = useWindowDimensions().width >= 1180;
+  const { doses, routine, refresh: refreshCare } = useCareProgress();
+  const taken = routine.confirmed,
+    total = doses.length;
+  const percent = total ? Math.round((taken / total) * 100) : 0;
+  async function confirm(id: string, status: "taken" | "skipped") {
+    setActing(id);
+    setActionError("");
+    try {
+      await scheduleService.updateStatus(
+        id,
+        status,
+        status === "taken"
+          ? "Confirmed by patient in Adheronix"
+          : "Patient recorded this dose as skipped",
+      );
+      await Promise.all([refresh(), refreshCare()]);
+      await refreshUnread();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setActing("");
     }
-
-    return (
-        <View style={styles.container}>
-            <SafeAreaView style={styles.safe}>
-                <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.scrollContent}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />}
+  }
+  return (
+    <Screen>
+      <PageTitle
+        eyebrow={new Date()
+          .toLocaleDateString("en-GB", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            timeZone: "Africa/Kigali",
+          })
+          .toUpperCase()}
+        title={"Hello, " + (user?.full_names?.split(" ")[0] || "there") + "."}
+        body="Here’s your day, at a glance."
+      />
+      {error && <Notice message={error} error />}
+      {actionError && <Notice message={actionError} error />}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        <View style={{ gap: 24 }}>
+          <LinearGradient
+            colors={["#E3F5EF", "#F2FAF8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              borderRadius: 25,
+              borderWidth: 1,
+              borderColor: "#D2EAE2",
+              paddingHorizontal: 22,
+              paddingVertical: 18,
+              gap: 10,
+              overflow: "hidden",
+            }}
+          >
+            <Row style={{ justifyContent: "space-between", gap: 10 }}>
+              <View style={{ flex: 1, gap: 8 }}>
+                <T variant="label" color={C.primary}>
+                  ONE DAY AT A TIME
+                </T>
+                {total ? (
+                  <>
+                    <Row style={{ alignItems: "baseline", gap: 7 }}>
+                      <T
+                        variant="display"
+                        color={C.ink}
+                        style={{ fontSize: 42, lineHeight: 48 }}
+                      >
+                        {taken}
+                      </T>
+                      <T
+                        color={C.muted}
+                        style={{ fontSize: 22, lineHeight: 32 }}
+                      >
+                        / {total}
+                      </T>
+                    </Row>
+                    <T
+                      variant="small"
+                      color={C.primary}
+                      style={{ fontFamily: "Inter_500Medium" }}
+                    >
+                      doses recorded today
+                    </T>
+                  </>
+                ) : (
+                  <>
+                    <T variant="h2" style={{ fontSize: 25, lineHeight: 32 }}>
+                      Your routine,{"\n"}your pace.
+                    </T>
+                    <T variant="small" color={C.primary}>
+                      A little support for your day.
+                    </T>
+                  </>
+                )}
+              </View>
+              <Companion
+                size={145}
+                mood={routine.mood}
+                style={{ marginRight: -5 }}
+              />
+            </Row>
+            <T color={C.muted} style={{ fontSize: 13, lineHeight: 21 }}>
+              {total
+                ? routine.message
+                : "Add the medication on your prescription whenever you’re ready."}
+            </T>
+            {total > 0 && (
+              <View
+                style={{
+                  height: 6,
+                  borderRadius: 4,
+                  backgroundColor: "#CFE8DF",
+                  marginTop: 3,
+                }}
+              >
+                <View
+                  style={{
+                    height: 6,
+                    borderRadius: 4,
+                    backgroundColor: C.success,
+                    width: (percent + "%") as `${number}%`,
+                  }}
+                />
+              </View>
+            )}
+            <Row style={{ justifyContent: "space-between", marginTop: 3 }}>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Your care summary"
+                onPress={() => go("/reports")}
+                style={{ paddingVertical: 7 }}
+              >
+                <Row style={{ gap: 5 }}>
+                  <T
+                    variant="small"
+                    color={C.primary}
+                    style={{ fontFamily: "Inter_600SemiBold" }}
+                  >
+                    Your care summary
+                  </T>
+                  <Ionicons name="arrow-forward" size={14} color={C.primary} />
+                </Row>
+              </Pressable>
+              {total > 0 && (
+                <T
+                  variant="small"
+                  color={C.success}
+                  style={{ fontFamily: "Inter_600SemiBold" }}
                 >
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <View>
-                            <Text style={styles.headerLabel}>GOOD MORNING</Text>
-                            <Text style={styles.userName}>{user?.full_names || 'User'}</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => router.push('/notifications')} style={styles.notificationBtn}>
-                            <Ionicons name="notifications-outline" size={24} color="#000" />
-                            {unreadCount > 0 && <View style={styles.badge} />}
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Adherence Card */}
-                    <Animated.View entering={FadeInUp.delay(100)} style={styles.mainCard}>
-                        <View>
-                            <Text style={styles.cardLabel}>Daily Adherence</Text>
-                            <Text style={styles.cardValue}>{adherence}%</Text>
-                        </View>
-                        <VisualTrend color="#FFFFFF50" />
-                    </Animated.View>
-
-                    {/* Bento Grid */}
-                    <View style={styles.grid}>
-                        <Animated.View entering={FadeInUp.delay(200)} style={styles.module}>
-                            <Text style={styles.moduleLabel}>Taken</Text>
-                            <Text style={styles.moduleValue}>{taken}</Text>
-                        </Animated.View>
-
-                        <Animated.View entering={FadeInUp.delay(300)} style={styles.module}>
-                            <Text style={styles.moduleLabel}>Pending</Text>
-                            <Text style={[styles.moduleValue, { color: '#64748B' }]}>
-                                {pending}
-                            </Text>
-                        </Animated.View>
-
-                        <Animated.View entering={FadeInUp.delay(400)} style={styles.module}>
-                            <Text style={styles.moduleLabel}>Missed</Text>
-                            <View style={styles.dataRow}>
-                                <Text style={styles.moduleValue}>{missed}</Text>
-                                <Text style={styles.unit}>doses</Text>
-                            </View>
-                        </Animated.View>
-
-                        <Animated.View entering={FadeInUp.delay(500)} style={styles.module}>
-                            <Text style={styles.moduleLabel}>Scheduled</Text>
-                            <View style={styles.dataRow}>
-                                <Text style={styles.moduleValue}>{total}</Text>
-                                <Text style={styles.unit}>today</Text>
-                            </View>
-                        </Animated.View>
-                    </View>
-
-                    <TouchableOpacity style={styles.logbookBtn} onPress={() => router.push('/meds')}>
-                        <Text style={styles.logbookText}>View Medication Logbook</Text>
-                        <Ionicons name="arrow-forward" size={18} color="#000" />
-                    </TouchableOpacity>
-
-                </ScrollView>
-            </SafeAreaView>
+                  {percent}% recorded
+                </T>
+              )}
+            </Row>
+          </LinearGradient>
+          <View
+            style={{
+              flexDirection: wide ? "row" : "column",
+              gap: 24,
+              alignItems: "stretch",
+            }}
+          >
+            <View style={{ flex: wide ? 1.8 : undefined, gap: 18 }}>
+              <Row style={{ justifyContent: "space-between", gap: 10 }}>
+                <T variant="h2">Today’s plan</T>
+                <Button
+                  small
+                  variant="secondary"
+                  label="Add medicine"
+                  icon="add"
+                  onPress={() => go("/add-medication")}
+                />
+              </Row>
+              <Card style={{ padding: 0, gap: 0 }}>
+                {!doses.length ? (
+                  <View style={{ padding: 23, gap: 13 }}>
+                    <Row style={{ gap: 11 }}>
+                      <View
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 13,
+                          backgroundColor: C.mint,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons
+                          name="medkit-outline"
+                          size={21}
+                          color={C.primary}
+                        />
+                      </View>
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <T variant="h3">A small start. A clearer day.</T>
+                        <T variant="small" color={C.muted}>
+                          Your first medication will appear here.
+                        </T>
+                      </View>
+                    </Row>
+                    <T variant="small" color={C.muted}>
+                      Use the details on your prescription. Your reminders and
+                      dose record will grow from there.
+                    </T>
+                  </View>
+                ) : (
+                  doses.map((dose, i) => {
+                    const done = dose.status === "taken",
+                      skipped = dose.status === "skipped";
+                    const name =
+                      dose.medication_name || medicationName(dose.medication);
+                    const p =
+                      dose.prescription || dose.medication?.prescription;
+                    const amount =
+                      typeof p?.dose === "string"
+                        ? p.dose
+                        : typeof p?.dosage === "string"
+                          ? p.dosage
+                          : "";
+                    return (
+                      <View
+                        key={dose.schedule_id}
+                        style={{
+                          padding: 22,
+                          borderTopWidth: i ? 1 : 0,
+                          borderTopColor: C.line,
+                          gap: 14,
+                        }}
+                      >
+                        <Row style={{ alignItems: "flex-start" }}>
+                          <View
+                            style={{
+                              width: 42,
+                              height: 42,
+                              borderRadius: 13,
+                              backgroundColor: done ? C.mint : C.bg,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Ionicons
+                              name={done ? "checkmark" : "medical-outline"}
+                              size={21}
+                              color={done ? C.primary : C.muted}
+                            />
+                          </View>
+                          <View style={{ flex: 1, gap: 3 }}>
+                            <T variant="h3">{name}</T>
+                            <T variant="small" color={C.muted}>
+                              {amount ? amount + " · " : ""}
+                              {displayTime(dose.scheduled_time)}
+                            </T>
+                          </View>
+                          <Chip
+                            label={
+                              done
+                                ? dose.confirmation_source === "patient"
+                                  ? "Confirmed"
+                                  : "Recorded"
+                                : skipped
+                                  ? "Skipped"
+                                  : dose.time_until === "Overdue"
+                                    ? "To review"
+                                    : "Upcoming"
+                            }
+                            tone={
+                              done
+                                ? "green"
+                                : dose.time_until === "Overdue"
+                                  ? "amber"
+                                  : "neutral"
+                            }
+                          />
+                        </Row>
+                        {done ? (
+                          <T variant="small" color={C.muted}>
+                            {dose.confirmation_source === "patient"
+                              ? "Recorded by you"
+                              : "Previously recorded — source unavailable"}
+                            {dose.taken_at
+                              ? " at " +
+                                new Date(dose.taken_at).toLocaleTimeString(
+                                  "en-GB",
+                                  { hour: "2-digit", minute: "2-digit" },
+                                )
+                              : ""}
+                            .
+                          </T>
+                        ) : skipped ? (
+                          <T variant="small" color={C.muted}>
+                            Recorded as skipped. Follow your clinician’s
+                            instructions about missed doses.
+                          </T>
+                        ) : (
+                          <Row
+                            style={{
+                              justifyContent: "flex-end",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <Button
+                              small
+                              variant="ghost"
+                              label="Record as skipped"
+                              disabled={!!acting}
+                              onPress={() =>
+                                void confirm(dose.schedule_id, "skipped")
+                              }
+                            />
+                            <Button
+                              small
+                              label="I took this"
+                              icon="checkmark"
+                              loading={acting === dose.schedule_id}
+                              disabled={!!acting && acting !== dose.schedule_id}
+                              onPress={() =>
+                                void confirm(dose.schedule_id, "taken")
+                              }
+                            />
+                          </Row>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </Card>
+              {doses.length > 0 && (
+                <T variant="small" color={C.muted}>
+                  Only confirm doses you actually took. If you’re unsure about a
+                  missed dose, follow your prescription or ask your clinician.
+                </T>
+              )}
+            </View>
+            <View style={{ flex: wide ? 1 : undefined, gap: 20 }}>
+              <Card>
+                <Row style={{ justifyContent: "space-between" }}>
+                  <T variant="h3">Your week, at a glance</T>
+                  <Ionicons name="calendar-outline" size={19} color={C.muted} />
+                </Row>
+                <Row style={{ alignItems: "baseline", gap: 8 }}>
+                  <T variant="display">
+                    {data?.adherence.total_scheduled
+                      ? data.adherence.adherence_rate + "%"
+                      : "—"}
+                  </T>
+                  <T variant="small" color={C.muted}>
+                    recorded as taken
+                  </T>
+                </Row>
+                <View
+                  style={{
+                    height: 7,
+                    borderRadius: 4,
+                    backgroundColor: C.bg,
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      height: 7,
+                      width: (Math.min(
+                        100,
+                        data?.adherence.adherence_rate ?? 0,
+                      ) + "%") as `${number}%`,
+                      backgroundColor: C.accent,
+                      borderRadius: 4,
+                    }}
+                  />
+                </View>
+                <T variant="small" color={C.muted}>
+                  {data?.adherence.total_scheduled
+                    ? data.adherence.taken +
+                      " recorded taken · " +
+                      data.adherence.total_scheduled +
+                      " doses due or recorded this week"
+                    : "Your history will appear as you build your routine."}
+                </T>
+                <Button
+                  small
+                  variant="ghost"
+                  label="See your summary"
+                  onPress={() => go("/reports")}
+                />
+              </Card>
+              <Card style={{ backgroundColor: C.white }}>
+                <Row style={{ alignItems: "center", gap: 12 }}>
+                  <Companion kind="assistant" size={72} />
+                  <View style={{ flex: 1, gap: 5 }}>
+                    <T variant="h3">A question on your mind?</T>
+                    <T variant="small" color={C.muted}>
+                      A little clarity for your everyday.
+                    </T>
+                    <Pressable
+                      accessibilityRole="link"
+                      accessibilityLabel="Open your assistant"
+                      onPress={() => go("/ai")}
+                      style={{ paddingVertical: 7 }}
+                    >
+                      <Row style={{ gap: 5 }}>
+                        <T
+                          variant="small"
+                          color={C.primary}
+                          style={{ fontFamily: "Inter_600SemiBold" }}
+                        >
+                          Ask your assistant
+                        </T>
+                        <Ionicons
+                          name="arrow-forward"
+                          size={14}
+                          color={C.primary}
+                        />
+                      </Row>
+                    </Pressable>
+                  </View>
+                </Row>
+              </Card>
+              <Row style={{ paddingHorizontal: 6, alignItems: "flex-start" }}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={18}
+                  color={C.muted}
+                />
+                <T variant="small" color={C.muted} style={{ flex: 1 }}>
+                  Your entries help tell your care story. They don’t replace
+                  medical advice.
+                </T>
+              </Row>
+            </View>
+          </View>
         </View>
-    );
+      )}
+    </Screen>
+  );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#F8FAFC",
-    },
-    safe: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingHorizontal: 20,
-        paddingBottom: 110,
-    },
-    centered: {
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    header: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginTop: 20,
-        marginBottom: 30,
-    },
-    headerLabel: {
-        fontSize: 12,
-        color: "#64748B",
-        letterSpacing: 1,
-    },
-    userName: {
-        fontSize: 24,
-        fontWeight: "bold",
-        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-        color: "#000",
-        marginTop: 2,
-    },
-    notificationBtn: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: "#FFF",
-        justifyContent: "center",
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-    },
-    badge: {
-        position: 'absolute',
-        top: 14,
-        right: 14,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: "#000",
-    },
-    mainCard: {
-        backgroundColor: "#000",
-        borderRadius: 30,
-        padding: 30,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: GRID_SPACING,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.1,
-        shadowRadius: 20,
-        elevation: 5,
-    },
-    cardLabel: {
-        color: "#FFFFFF90",
-        fontSize: 14,
-    },
-    cardValue: {
-        color: "#FFF",
-        fontSize: 42,
-        fontWeight: "bold",
-        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-        marginTop: 5,
-    },
-    trendContainer: {
-        flexDirection: "row",
-        alignItems: "flex-end",
-        gap: 4,
-        height: 40,
-    },
-    trendBar: {
-        width: 4,
-        borderRadius: 2,
-    },
-    grid: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: GRID_SPACING,
-    },
-    module: {
-        width: MODULE_SIZE,
-        height: MODULE_SIZE,
-        backgroundColor: "#FFF",
-        borderRadius: 25,
-        padding: 20,
-        justifyContent: "space-between",
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-    },
-    moduleLabel: {
-        fontSize: 14,
-        color: "#64748B",
-    },
-    moduleValue: {
-        fontSize: 28,
-        fontWeight: "bold",
-        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-        color: "#000",
-    },
-    dataRow: {
-        flexDirection: "row",
-        alignItems: "baseline",
-    },
-    unit: {
-        fontSize: 12,
-        color: "#64748B",
-        marginLeft: 4,
-    },
-    logbookBtn: {
-        marginTop: 25,
-        backgroundColor: "#FFF",
-        height: 60,
-        borderRadius: 30,
-        flexDirection: "row",
-        justifyContent: "center",
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-        gap: 10,
-    },
-    logbookText: {
-        fontSize: 15,
-        color: "#000",
-        fontWeight: "700",
-    }
-});

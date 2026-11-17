@@ -147,13 +147,11 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
     color: "rgba(255, 255, 255, 0.80)",
     letterSpacing: 5,
   },
   tagline: {
     fontSize: 9,
-    fontFamily: "Inter_300Light",
     color: "rgba(255, 255, 255, 0.30)",
     letterSpacing: 1.2,
     marginTop: 6,

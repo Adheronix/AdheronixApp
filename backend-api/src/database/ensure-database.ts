@@ -23,7 +23,7 @@ export async function ensureDatabaseExists(): Promise<void> {
     user: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: maintenanceDatabase,
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : false,
   });
 
   await client.connect();
@@ -51,7 +51,7 @@ async function enablePgvector(database: string): Promise<void> {
     user: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database,
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : false,
   });
 
   await client.connect();

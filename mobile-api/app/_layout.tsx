@@ -1,20 +1,56 @@
 import { Stack } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
-import { useFonts } from "expo-font";
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
+import { StatusBar } from "expo-status-bar";
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AssistantSessionProvider } from "../components/assistant-session";
+import { CareProgressProvider } from "../components/care-progress";
+import { AppShell } from "../components/app-shell";
+import { SessionProvider } from "../components/session";
+import { ActivityIndicator, View } from "react-native";
 export default function RootLayout() {
-  // We'll skip custom fonts for now to fix bundled errors and use standard platform fonts
-  useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
-
+  const [loaded, error] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+  if (!loaded && !error)
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#F5F9FC",
+        }}
+      >
+        <ActivityIndicator color="#176B92" />
+      </View>
+    );
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-    </Stack>
+    <SafeAreaProvider>
+      <SessionProvider>
+        <StatusBar style="dark" />
+        <CareProgressProvider>
+          <AssistantSessionProvider>
+            <AppShell>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: "fade",
+                  animationDuration: 140,
+                }}
+              />
+            </AppShell>
+          </AssistantSessionProvider>
+        </CareProgressProvider>
+      </SessionProvider>
+    </SafeAreaProvider>
   );
 }

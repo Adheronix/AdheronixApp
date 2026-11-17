@@ -1,3 +1,4 @@
+import { getJwtSecret } from './jwt-secret';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
@@ -27,7 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: jwtFromHeader,
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') ?? 'supersecret',
+      secretOrKey: getJwtSecret(configService),
     });
   }
 

@@ -6,3 +6,6 @@ build/
 .DS_Store
 RUN.md
 .vestigo/
+
+# Device credentials stay local
+hardware/**/secrets.h

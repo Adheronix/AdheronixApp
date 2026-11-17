@@ -1,3 +1,4 @@
+import { dateOnly } from './date-only';
 import {
   Injectable,
   NotFoundException,
@@ -11,7 +12,11 @@ import { Patient } from '../patient/patient.entity';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateIntakeDto } from './dto/update-intake.dto';
 import { NotificationService } from '../notification/notification.service';
-import { NotificationType } from '../notification/notification.entity';
+import {
+  Notification,
+  NotificationStatus,
+  NotificationType,
+} from '../notification/notification.entity';
 
 @Injectable()
 export class MedicationScheduleService {
@@ -57,73 +62,100 @@ export class MedicationScheduleService {
       );
     }
 
-    const schedules: MedicationSchedule[] = [];
     const today = new Date();
-    const daysToSchedule = 7; // Schedule for the next 7 days
-
-    for (let day = 0; day < daysToSchedule; day++) {
-      const scheduleDate = new Date(today);
-      scheduleDate.setDate(scheduleDate.getDate() + day);
-      const dateString = scheduleDate.toISOString().split('T')[0];
-
-      for (const time of dto.times) {
-        // Skip times that have already passed today
-        if (day === 0) {
-          const [hours, minutes] = time.split(':').map(Number);
-          const scheduledDateTime = new Date(scheduleDate);
-          scheduledDateTime.setHours(hours, minutes, 0, 0);
-          if (scheduledDateTime < today) {
-            continue;
-          }
-        }
-
-        // Check if a schedule already exists for this date/time/medication
-        const existing = await this.scheduleRepository.findOne({
+    const todayKey = dateOnly(today);
+    const nowTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
+    const duration = Number(
+      medication.period.match(/^(\d+)\s*days?$/i)?.[1] ?? 7,
+    );
+    const daysToSchedule = Math.min(90, Math.max(1, duration));
+    return this.scheduleRepository.manager.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        patientId + ':' + dto.medication_id,
+      ]);
+      if (dto.replace_pending) {
+        const previous = await manager.find(MedicationSchedule, {
           where: {
+            patient: { patient_id: patientId },
             medication: { medication_id: dto.medication_id },
-            scheduled_date: dateString,
-            scheduled_time: time,
+            status: IntakeStatus.PENDING,
           },
         });
-
-        if (!existing) {
-          const schedule = this.scheduleRepository.create({
-            patient,
-            medication,
-            scheduled_date: dateString,
-            scheduled_time: time,
-            status: IntakeStatus.PENDING,
+        const future = previous.filter(
+          (s) =>
+            s.scheduled_date > todayKey ||
+            (s.scheduled_date === todayKey &&
+              s.scheduled_time.slice(0, 5) >= nowTime),
+        );
+        if (future.length) await manager.remove(MedicationSchedule, future);
+        const reminders = await manager.find(Notification, {
+          where: {
+            patient: { patient_id: patientId },
+            status: NotificationStatus.PENDING,
+          },
+        });
+        const related = reminders.filter(
+          (n) =>
+            n.metadata?.medication_id === dto.medication_id &&
+            n.scheduled_for >= today,
+        );
+        if (related.length) await manager.remove(Notification, related);
+      }
+      const schedules: MedicationSchedule[] = [];
+      for (let day = 0; day < daysToSchedule; day++) {
+        const calendar = new Date(today);
+        calendar.setDate(calendar.getDate() + day);
+        const date = dateOnly(calendar);
+        for (const time of dto.times) {
+          if (day === 0 && time < nowTime) continue;
+          const existing = await manager.findOne(MedicationSchedule, {
+            where: {
+              medication: { medication_id: dto.medication_id },
+              scheduled_date: date,
+              scheduled_time: time,
+            },
           });
-          schedules.push(schedule);
+          if (!existing)
+            schedules.push(
+              manager.create(MedicationSchedule, {
+                patient,
+                medication,
+                scheduled_date: date,
+                scheduled_time: time,
+                status: IntakeStatus.PENDING,
+              }),
+            );
         }
       }
-    }
-
-    const saved = await this.scheduleRepository.save(schedules);
-
-    // Also create notification reminders for each scheduled time
-    for (const schedule of saved) {
-      const [hours, minutes] = schedule.scheduled_time.split(':').map(Number);
-      const scheduledFor = new Date(
-        `${schedule.scheduled_date}T${schedule.scheduled_time}:00`,
+      const saved = await manager.save(MedicationSchedule, schedules);
+      const prescription = medication.prescription as { name?: string };
+      const reminders = saved.map((schedule) =>
+        manager.create(Notification, {
+          patient,
+          title: 'Medication reminder',
+          message:
+            'Your scheduled medication is ready for review: ' +
+            (prescription.name ?? 'Medication'),
+          type: NotificationType.MEDICATION_REMINDER,
+          status: NotificationStatus.PENDING,
+          metadata: {
+            medication_id: medication.medication_id,
+            schedule_id: schedule.schedule_id,
+          },
+          scheduled_for: new Date(
+            schedule.scheduled_date +
+              'T' +
+              schedule.scheduled_time.slice(0, 5) +
+              ':00',
+          ),
+        }),
       );
-
-      if (scheduledFor > new Date()) {
-        await this.notificationService.createMedicationReminder(
-          patientId,
-          medication.medication_id,
-          (medication.prescription as any)?.prescription?.[0]?.name ||
-            (medication.prescription as any)?.name ||
-            'Medication',
-          scheduledFor,
-        );
-      }
-    }
-
-    return {
-      message: `Created ${saved.length} schedule entries for the next ${daysToSchedule} days`,
-      schedules: saved,
-    };
+      if (reminders.length) await manager.save(Notification, reminders);
+      return {
+        message: `Created ${saved.length} schedule entries for the next ${daysToSchedule} days`,
+        schedules: saved,
+      };
+    });
   }
 
   /**
@@ -131,7 +163,7 @@ export class MedicationScheduleService {
    * Returns medications that are pending and scheduled for today
    */
   async getUpcomingMedications(patientId: string) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = dateOnly();
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
@@ -184,6 +216,7 @@ export class MedicationScheduleService {
         time_until: timeUntil,
         taken_at: schedule.taken_at,
         notes: schedule.notes,
+        confirmation_source: schedule.confirmation_source,
       };
     });
   }
@@ -193,7 +226,7 @@ export class MedicationScheduleService {
    * Returns counts of taken, missed, and pending medications
    */
   async getGeneralStatus(patientId: string) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = dateOnly();
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
@@ -202,62 +235,28 @@ export class MedicationScheduleService {
         patient: { patient_id: patientId },
         scheduled_date: today,
       },
+      relations: ['medication'],
     });
-
-    let taken = 0;
-    let missed = 0;
-    let pending = 0;
-    let skipped = 0;
-
-    for (const schedule of todaySchedules) {
-      switch (schedule.status) {
-        case IntakeStatus.TAKEN:
-          taken++;
-          break;
-        case IntakeStatus.MISSED:
-          missed++;
-          break;
-        case IntakeStatus.SKIPPED:
-          skipped++;
-          break;
-        case IntakeStatus.PENDING:
-          // Check if the time has passed
-          if (schedule.scheduled_time < currentTime) {
-            missed++;
-            // Auto-mark as missed
-            schedule.status = IntakeStatus.MISSED;
-            await this.scheduleRepository.save(schedule);
-
-            // Create a missed-dose notification
-            await this.notificationService.create(patientId, {
-              title: 'Missed dose alert',
-              message: `You missed your ${schedule.scheduled_time} dose of ${
-                (schedule.medication as any)?.prescription?.[0]?.name ||
-                (schedule.medication as any)?.name ||
-                'medication'
-              }.`,
-              type: NotificationType.SYSTEM_ALERT,
-              metadata: {
-                schedule_id: schedule.schedule_id,
-                medication_id: schedule.medication.medication_id,
-                scheduled_date: schedule.scheduled_date,
-                scheduled_time: schedule.scheduled_time,
-                status: schedule.status,
-              },
-            });
-          } else {
-            pending++;
-          }
-          break;
-      }
-    }
 
     return {
       date: today,
-      medications_taken_today: taken,
-      medications_missed: missed,
-      medications_pending: pending,
-      medications_skipped: skipped,
+      medications_taken_today: todaySchedules.filter(
+        (s) => s.status === IntakeStatus.TAKEN,
+      ).length,
+      medications_missed: todaySchedules.filter(
+        (s) => s.status === IntakeStatus.MISSED,
+      ).length,
+      medications_pending: todaySchedules.filter(
+        (s) => s.status === IntakeStatus.PENDING,
+      ).length,
+      medications_skipped: todaySchedules.filter(
+        (s) => s.status === IntakeStatus.SKIPPED,
+      ).length,
+      medications_overdue: todaySchedules.filter(
+        (s) =>
+          s.status === IntakeStatus.PENDING &&
+          s.scheduled_time.slice(0, 5) < currentTime,
+      ).length,
       total_scheduled: todaySchedules.length,
     };
   }
@@ -286,6 +285,10 @@ export class MedicationScheduleService {
 
     if (dto.status === IntakeStatus.TAKEN) {
       schedule.taken_at = new Date();
+      schedule.confirmation_source = 'patient';
+    } else {
+      schedule.taken_at = null;
+      schedule.confirmation_source = null;
     }
 
     if (dto.notes) {
@@ -362,10 +365,10 @@ export class MedicationScheduleService {
   async getWeeklyAdherence(patientId: string) {
     const today = new Date();
     const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
+    weekAgo.setDate(weekAgo.getDate() - 6);
 
-    const startDate = weekAgo.toISOString().split('T')[0];
-    const endDate = today.toISOString().split('T')[0];
+    const startDate = dateOnly(weekAgo);
+    const endDate = dateOnly(today);
 
     const schedules = await this.scheduleRepository.find({
       where: {
@@ -374,16 +377,17 @@ export class MedicationScheduleService {
       },
     });
 
-    const total = schedules.length;
-    const taken = schedules.filter(
-      (s) => s.status === IntakeStatus.TAKEN,
-    ).length;
-    const missed = schedules.filter(
-      (s) => s.status === IntakeStatus.MISSED,
-    ).length;
-    const skipped = schedules.filter(
-      (s) => s.status === IntakeStatus.SKIPPED,
-    ).length;
+    const nowTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
+    const due = schedules.filter(
+      (s) =>
+        s.status !== IntakeStatus.PENDING ||
+        s.scheduled_date < endDate ||
+        s.scheduled_time.slice(0, 5) <= nowTime,
+    );
+    const total = due.length;
+    const taken = due.filter((s) => s.status === IntakeStatus.TAKEN).length;
+    const missed = due.filter((s) => s.status === IntakeStatus.MISSED).length;
+    const skipped = due.filter((s) => s.status === IntakeStatus.SKIPPED).length;
 
     return {
       period: { start: startDate, end: endDate },

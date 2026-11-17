@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   Controller,
   Post,
   Body,
   UseGuards,
   HttpCode,
   HttpStatus,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,6 +16,10 @@ import {
 } from '@nestjs/swagger';
 import {
   IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsIn,
+  MaxLength,
   ValidateNested,
   IsString,
   IsOptional,
@@ -26,17 +32,25 @@ import { Patient } from '../patient/patient.entity';
 import { AiClientService } from './ai-client.service';
 import { DoctorAgentService } from './doctor-agent.service';
 import { ConfigService } from '@nestjs/config';
+import {
+  CARE_SCOPE_REPLY,
+  CARE_SYSTEM_PROMPT,
+  chatIntent,
+} from './ai-chat-policy';
 
 class ChatMessageDto {
-  @IsString()
-  role: 'user' | 'assistant' | 'system';
+  @IsIn(['user', 'assistant'])
+  role: 'user' | 'assistant';
 
   @IsString()
+  @MaxLength(8000)
   content: string;
 }
 
 class ChatRequestDto {
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
   messages: ChatMessageDto[];
@@ -48,7 +62,9 @@ class ChatRequestDto {
 
 class ChatResponseDto {
   message: string;
-  model: string;
+  model: string | null;
+  provider: string | null;
+  response_kind: 'care' | 'scope' | 'identity';
 }
 
 @ApiTags('ai')
@@ -77,10 +93,52 @@ export class AiController {
     const model =
       this.configService.get<string>('GROQ_PRIMARY_MODEL') ??
       this.configService.get<string>('OPENROUTER_PRIMARY_MODEL') ??
-      'llama-3.3-70b-versatile';
+      'openai/gpt-oss-20b';
 
+    const latest = body.messages.at(-1);
+    if (!latest || latest.role !== 'user' || !latest.content.trim()) {
+      throw new BadRequestException(
+        'End the conversation with a non-empty user message.',
+      );
+    }
+    const intent = chatIntent(latest.content);
+    if (intent === 'coding')
+      return {
+        message: CARE_SCOPE_REPLY,
+        model: null,
+        provider: null,
+        response_kind: 'scope',
+      };
+    if (intent === 'identity') {
+      // A tiny context-free request verifies the actual selected provider/fallback.
+      // The model's self-description is never used as identity evidence.
+      try {
+        const actual = await this.aiClientService.createChatCompletion({
+          model,
+          temperature: 0,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'Reply OK.' }],
+        });
+        return {
+          message: actual.model
+            ? `I’m the Adheronix care assistant. This runtime check used **${actual.model}**${actual.provider ? ` through **${actual.provider}**` : ''}. Routing can change between requests; this does not identify earlier replies. I shouldn’t have guessed GPT-4 or called any model “the latest.”`
+            : 'I’m the Adheronix care assistant. The provider did not report a model identifier, so I can’t verify the exact model.',
+          model: actual.model ?? null,
+          provider: actual.provider ?? null,
+          response_kind: 'identity',
+        };
+      } catch {
+        return {
+          message:
+            'I’m the Adheronix care assistant. I can’t verify the runtime model right now, so I won’t guess its name or version.',
+          model: null,
+          provider: null,
+          response_kind: 'identity',
+        };
+      }
+    }
     let contextMessage = '';
-    if (body.patient_context !== false) {
+    if (body.patient_context === true) {
       const context = await this.doctorAgentService.buildPatientContext(
         patient.patient_id,
       );
@@ -90,8 +148,7 @@ export class AiController {
     const messages = [
       {
         role: 'system',
-        content:
-          'You are Adheronix AI, a helpful medical adherence assistant. You help patients with medication questions, adherence support, and general health guidance. You are NOT a replacement for a licensed medical professional. Never provide diagnoses. Always advise seeking professional medical help for urgent concerns. Be concise, friendly, and focused on medication adherence.',
+        content: CARE_SYSTEM_PROMPT,
       },
       ...(contextMessage
         ? [{ role: 'system' as const, content: contextMessage }]
@@ -102,12 +159,18 @@ export class AiController {
       })),
     ];
 
-    const response = await this.aiClientService.createChatCompletion({
-      model,
-      temperature: 0.7,
-      max_tokens: 800,
-      messages,
-    });
+    const response = await this.aiClientService
+      .createChatCompletion({
+        model,
+        temperature: 0.3,
+        max_tokens: 800,
+        messages,
+      })
+      .catch(() => {
+        throw new ServiceUnavailableException(
+          'The AI assistant is temporarily unavailable. Please try again later.',
+        );
+      });
 
     const content =
       response.choices?.[0]?.message?.content?.trim() ??
@@ -115,7 +178,9 @@ export class AiController {
 
     return {
       message: content,
-      model: response.model ?? model,
+      model: response.model ?? null,
+      provider: response.provider ?? null,
+      response_kind: 'care',
     };
   }
 }

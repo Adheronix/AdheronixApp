@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
+import { ReadinessController } from './readiness.controller';
 import { AppService } from './app.service';
 import { PatientModule } from './patient/patient.module';
 import { MedicationModule } from './medication/medication.module';
@@ -19,7 +20,9 @@ import { SmartboxModule } from './smartbox/smartbox.module';
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       useFactory: async () => {
-        await ensureDatabaseExists();
+        if (process.env.NODE_ENV !== 'production') {
+          await ensureDatabaseExists();
+        }
 
         return {
           type: 'postgres',
@@ -29,10 +32,10 @@ import { SmartboxModule } from './smartbox/smartbox.module';
           password: process.env.DB_PASSWORD,
           database: process.env.DB_NAME,
           autoLoadEntities: true,
-          synchronize: true,
+          synchronize: process.env.NODE_ENV !== 'production',
           ssl:
             process.env.DB_SSL === 'true'
-              ? { rejectUnauthorized: false }
+              ? { rejectUnauthorized: true }
               : false,
         };
       },
@@ -45,7 +48,7 @@ import { SmartboxModule } from './smartbox/smartbox.module';
     HealthScoreModule,
     SmartboxModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, ReadinessController],
   providers: [AppService],
 })
 export class AppModule {}

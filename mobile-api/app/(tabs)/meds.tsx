@@ -1,253 +1,204 @@
+import { useCallback, useState } from "react";
+import { View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    Platform,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  Button,
+  C,
+  Card,
+  Chip,
+  ConfirmDialog,
+  Empty,
+  Field,
+  Loading,
+  Notice,
+  PageTitle,
+  Row,
+  Screen,
+  T,
+  go,
+} from "../../components/ui";
+import { useResource } from "../../hooks/use-resource";
 import { medicationService } from "../../services/medication.service";
-import Animated, { FadeInUp } from "react-native-reanimated";
-
-export default function MedsScreen() {
-    const router = useRouter();
-    const [meds, setMeds] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-
-    const fetchMeds = async () => {
-        try {
-            const data = await medicationService.getAll();
-            setMeds(data);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
+import {
+  Medication,
+  displayTime,
+  dosage,
+  medicationName,
+} from "../../services/types";
+import { errorMessage } from "../../services/api";
+export default function Medications() {
+  const { data, loading, error, refresh } = useResource(
+    useCallback(() => medicationService.getAll(), []),
+  );
+  const [query, setQuery] = useState(""),
+    [selected, setSelected] = useState<Medication | null>(null),
+    [busy, setBusy] = useState(false),
+    [actionError, setActionError] = useState("");
+  const list = (data ?? []).filter((m) =>
+    medicationName(m).toLowerCase().includes(query.toLowerCase()),
+  );
+  async function remove() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await medicationService.delete(selected.medication_id);
+      setSelected(null);
+      await refresh();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Screen>
+      <PageTitle
+        eyebrow="YOUR ROUTINE, IN ONE PLACE"
+        title="My medications"
+        body="The details that make your daily plan yours."
+        action={
+          <Button
+            label="Add medication"
+            icon="add"
+            onPress={() => go("/add-medication")}
+          />
         }
-    };
-
-    useEffect(() => { fetchMeds(); }, []);
-
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchMeds();
-    };
-
-    if (loading) {
-        return (
-            <View style={[styles.container, styles.centered]}>
-                <ActivityIndicator color="#000" />
-            </View>
-        );
-    }
-
-    return (
-        <View style={styles.container}>
-            <SafeAreaView style={styles.safe}>
-                <View style={styles.header}>
-                    <View>
-                        <Text style={styles.title}>Medications</Text>
-                        <Text style={styles.subtitle}>Your active prescriptions</Text>
-                    </View>
-                    <TouchableOpacity
-                        style={styles.addBtn}
-                        onPress={() => router.push('/scan')}
-                    >
-                        <Ionicons name="add" size={28} color="#FFF" />
-                    </TouchableOpacity>
-                </View>
-
-                <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />}
+      />
+      <View style={{ maxWidth: 420, marginBottom: 24 }}>
+        <Field
+          label="Find a medication"
+          placeholder="Search your medication list"
+          value={query}
+          onChangeText={setQuery}
+        />
+      </View>
+      {(error || actionError) && (
+        <Notice error message={error || actionError} />
+      )}
+      <Row style={{ justifyContent: "space-between", marginBottom: 16 }}>
+        <T variant="h3">Your medication list</T>
+        <Chip label={(data?.length ?? 0) + " medications"} />
+      </Row>
+      {loading && !data ? (
+        <Loading />
+      ) : !list.length ? (
+        <Card>
+          <Empty
+            icon="medical-outline"
+            title={query ? "No matches yet" : "Let’s build your routine"}
+            body={
+              query
+                ? "Try a different medication name."
+                : "Add a medication from your prescription. Your daily plan will keep the details close."
+            }
+            action={
+              !query ? (
+                <Button
+                  label="Add your first medication"
+                  onPress={() => go("/add-medication")}
+                  icon="add"
+                />
+              ) : undefined
+            }
+          />
+        </Card>
+      ) : (
+        <View style={{ gap: 16 }}>
+          {list.map((m) => {
+            const times = [
+              ...new Set(
+                m.schedules?.map((s) => s.scheduled_time.slice(0, 5)) ?? [],
+              ),
+            ].sort();
+            return (
+              <Card key={m.medication_id}>
+                <Row style={{ alignItems: "flex-start" }}>
+                  <View
+                    style={{
+                      width: 47,
+                      height: 47,
+                      borderRadius: 15,
+                      backgroundColor: C.mint,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name="medical-outline"
+                      size={23}
+                      color={C.primary}
+                    />
+                  </View>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <T variant="h2">{medicationName(m)}</T>
+                    <T color={C.muted}>{dosage(m)}</T>
+                  </View>
+                  <Chip
+                    label={
+                      m.source === "patient"
+                        ? "Added by you"
+                        : "Imported record"
+                    }
+                  />
+                </Row>
+                <Row style={{ flexWrap: "wrap", gap: 10 }}>
+                  <Chip
+                    label={
+                      m.frequency +
+                      " " +
+                      (m.frequency === 1 ? "time" : "times") +
+                      " daily"
+                    }
+                    tone="green"
+                  />
+                  <Chip label={m.period} />
+                  {times.map((t) => (
+                    <Chip key={t} label={displayTime(t)} />
+                  ))}
+                </Row>
+                <T color={C.muted}>{m.intake_recommendation}</T>
+                <Row
+                  style={{
+                    borderTopWidth: 1,
+                    borderTopColor: C.line,
+                    paddingTop: 13,
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                  }}
                 >
-                    {meds.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Ionicons name="medkit-outline" size={80} color="#E2E8F0" />
-                            <Text style={styles.emptyText}>No medications found</Text>
-                            <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/scan')}>
-                                <Text style={styles.emptyBtnText}>Scan a Prescription</Text>
-                            </TouchableOpacity>
-                        </View>
-                    ) : (
-                        meds.map((med, index) => (
-                            <Animated.View
-                                key={med.medication_id}
-                                entering={FadeInUp.delay(index * 100)}
-                                style={styles.medCard}
-                            >
-                                <View style={styles.cardHeader}>
-                                    <View style={styles.iconBox}>
-                                        <Ionicons name="medical" size={24} color="#FFF" />
-                                    </View>
-                                    <View style={styles.medInfo}>
-                                        <Text style={styles.medName}>{(med.prescription?.name || 'Medication')}</Text>
-                                        <Text style={styles.medDosage}>{med.dosage || 'Take as directed'}</Text>
-                                    </View>
-                                    <View style={styles.statusBadge}>
-                                        <Text style={styles.statusText}>Active</Text>
-                                    </View>
-                                </View>
-
-                                <View style={styles.cardFooter}>
-                                    <View style={styles.footerItem}>
-                                        <Ionicons name="time-outline" size={16} color="#64748B" />
-                                        <Text style={styles.footerText}>{med.frequency || 'Daily'}</Text>
-                                    </View>
-                                    <View style={styles.footerItem}>
-                                        <Ionicons name="calendar-outline" size={16} color="#64748B" />
-                                        <Text style={styles.footerText}>{med.period || 'On-going'}</Text>
-                                    </View>
-                                </View>
-                            </Animated.View>
-                        ))
-                    )}
-                </ScrollView>
-            </SafeAreaView>
+                  <Button
+                    small
+                    variant="ghost"
+                    icon="trash-outline"
+                    label="Remove record"
+                    onPress={() => setSelected(m)}
+                  />
+                  <Button
+                    small
+                    variant="secondary"
+                    icon="time-outline"
+                    label={
+                      times.length ? "Manage schedule" : "Set medication times"
+                    }
+                    onPress={() => go("/add-medication?id=" + m.medication_id)}
+                  />
+                </Row>
+              </Card>
+            );
+          })}
         </View>
-    );
+      )}
+      <View style={{ marginTop: 22 }}>
+        <Notice message="Keep your list aligned with your prescription. Editing an app record does not change your clinician’s treatment instructions." />
+      </View>
+      <ConfirmDialog
+        visible={!!selected}
+        title="Remove this app record?"
+        body="This removes the medication and its reminders from Adheronix. It does not change your prescribed treatment."
+        busy={busy}
+        onCancel={() => setSelected(null)}
+        onConfirm={() => void remove()}
+      />
+    </Screen>
+  );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#F8FAFC",
-    },
-    safe: {
-        flex: 1,
-    },
-    centered: {
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    header: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingHorizontal: 25,
-        paddingTop: 20,
-        paddingBottom: 30,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: "bold",
-        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-        color: "#000",
-    },
-    subtitle: {
-        fontSize: 14,
-        color: "#64748B",
-    },
-    addBtn: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: "#000",
-        justifyContent: "center",
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
-    },
-    scrollContent: {
-        paddingHorizontal: 25,
-        paddingBottom: 100,
-    },
-    medCard: {
-        backgroundColor: "#FFF",
-        borderRadius: 25,
-        padding: 20,
-        marginBottom: 20,
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.02,
-        shadowRadius: 10,
-        elevation: 2,
-    },
-    cardHeader: {
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    iconBox: {
-        width: 50,
-        height: 50,
-        borderRadius: 15,
-        backgroundColor: "#000",
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    medInfo: {
-        flex: 1,
-        marginLeft: 15,
-    },
-    medName: {
-        fontSize: 18,
-        fontWeight: "700",
-        color: "#0F172A",
-    },
-    medDosage: {
-        fontSize: 14,
-        color: "#64748B",
-        marginTop: 2,
-    },
-    statusBadge: {
-        backgroundColor: "#F1F5F9",
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 10,
-    },
-    statusText: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: "#0F172A",
-    },
-    cardFooter: {
-        flexDirection: "row",
-        marginTop: 20,
-        paddingTop: 15,
-        borderTopWidth: 1,
-        borderTopColor: "#F1F5F9",
-        gap: 20,
-    },
-    footerItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-    },
-    footerText: {
-        fontSize: 13,
-        color: "#64748B",
-    },
-    emptyState: {
-        paddingTop: 60,
-        alignItems: "center",
-    },
-    emptyText: {
-        color: "#94A3B8",
-        fontSize: 18,
-        fontWeight: "700",
-        marginTop: 20,
-        marginBottom: 20,
-    },
-    emptyBtn: {
-        backgroundColor: "#F1F5F9",
-        paddingHorizontal: 25,
-        paddingVertical: 15,
-        borderRadius: 20,
-    },
-    emptyBtnText: {
-        color: "#0F172A",
-        fontWeight: "700",
-    }
-});

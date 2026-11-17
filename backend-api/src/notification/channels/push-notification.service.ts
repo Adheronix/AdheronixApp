@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 export interface PushNotificationPayload {
   token: string;
@@ -6,57 +6,30 @@ export interface PushNotificationPayload {
   body: string;
   data?: Record<string, unknown>;
 }
-
 export interface IPushNotificationService {
   send(payload: PushNotificationPayload): Promise<void>;
 }
 
-/**
- * Production-ready push implementation using Expo Push API.
- *
- * The `token` field should be an **Expo push token** (e.g. `ExponentPushToken[...]`)
- * which the mobile app obtains via `expo-notifications` and sends to the backend.
- */
 @Injectable()
 export class PushNotificationService implements IPushNotificationService {
-  private readonly logger = new Logger(PushNotificationService.name);
-
   async send(payload: PushNotificationPayload): Promise<void> {
-    try {
-      if (!payload.token) {
-        this.logger.warn('No push token provided, skipping push');
-        return;
-      }
-
-      const body = {
+    if (!/^(ExponentPushToken|ExpoPushToken)\[.+\]$/.test(payload.token))
+      throw new Error('Invalid Expo push token');
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         to: payload.token,
         sound: 'default',
         title: payload.title,
         body: payload.body,
         data: payload.data ?? {},
-      };
-
-      // Node 18+ has global fetch available
-      const response = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        this.logger.error(
-          `Expo push request failed with status ${response.status}: ${text}`,
-        );
-        return;
-      }
-
-      const json = await response.json();
-      this.logger.log(`Expo push response: ${JSON.stringify(json, null, 2)}`);
-    } catch (error: any) {
-      this.logger.error(`Error sending push notification: ${error.message}`);
-    }
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error('Push provider rejected the request');
+    const result = (await response.json()) as { data?: { status?: string } };
+    if (result.data?.status !== 'ok')
+      throw new Error('Push provider did not accept the notification');
   }
 }

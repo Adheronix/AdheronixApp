@@ -5,6 +5,7 @@ import { MedicationInfo } from './medication.entity';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { Patient } from '../patient/patient.entity';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
+import { NotificationType } from '../notification/notification.entity';
 import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
@@ -37,18 +38,13 @@ export class MedicationService {
 
     const saved = await this.medicationRepository.save(medication);
 
-    // Schedule a reminder for 5 minutes from now (Mock for "Next Dose")
-    const nextDose = new Date();
-    nextDose.setMinutes(nextDose.getMinutes() + 5);
-
-    await this.notificationService.createMedicationReminder(
-      patientId,
-      saved.medication_id,
-      (saved.prescription as any)?.prescription?.[0]?.name ||
-        (saved.prescription as any)?.name ||
-        'Medication',
-      nextDose,
-    );
+    await this.notificationService.create(patientId, {
+      title: 'Medication added',
+      message:
+        'Your medication record is saved. Set the times from your prescription to add it to your daily plan.',
+      type: NotificationType.MEDICATION_UPDATE,
+      metadata: { medication_id: saved.medication_id },
+    });
 
     return saved;
   }
@@ -83,6 +79,7 @@ export class MedicationService {
       patientId,
       medicationId,
     );
+    await this.notificationService.removeForMedication(patientId, medicationId);
     await this.medicationRepository.remove(medication);
     return { message: 'Medication deleted' };
   }
@@ -125,6 +122,7 @@ export class MedicationService {
         medication_id: medicationId,
         patient: { patient_id: patientId },
       },
+      relations: ['schedules'],
     });
     if (!medication) {
       throw new NotFoundException('Medication not found for this patient');

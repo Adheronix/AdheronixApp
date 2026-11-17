@@ -1,341 +1,230 @@
+import { useEffect, useState } from "react";
+import { Switch, View, useWindowDimensions } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { notificationService } from "../../services/notification.service";
-
-export default function SupportScreen() {
-    const router = useRouter();
-
-    // State for interactive checkboxes and radio buttons
-    const [reminderMode, setReminderMode] = useState("Sound");
-    const [reminderStrength, setReminderStrength] = useState("Gentle");
-    const [snoozeOption, setSnoozeOption] = useState("5 min");
-    const [smartReminders, setSmartReminders] = useState(true);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [unreadCount, setUnreadCount] = useState<number>(0);
-
-    const missedDoseAlerts = [
-        { id: 1, date: "02 May 2026", time: "11 AM" },
-        { id: 2, date: "11 February 2026", time: "8 AM" },
-        { id: 3, date: "11 June 2026", time: "12 PM" },
-        { id: 4, date: "11 June 2026", time: "12 PM" },
-    ];
-
-    const filteredAlerts = missedDoseAlerts.filter((alert) => {
-        const query = searchQuery.toLowerCase();
-        return alert.date.toLowerCase().includes(query) || alert.time.toLowerCase().includes(query);
-    });
-
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const count = await notificationService.getUnreadCount();
-                setUnreadCount(count);
-            } catch (e) {
-                console.error("Failed to fetch unread notifications count", e);
-            }
-        };
-        load();
-    }, []);
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <View style={styles.searchWrapper}>
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Search . . ."
-                        placeholderTextColor="#AAA"
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                    />
-                    <View style={styles.searchIconContainer}>
-                        <Ionicons name="search" size={18} color="#000" />
-                    </View>
-                </View>
-
-                <TouchableOpacity
-                    style={styles.notificationButton}
-                    onPress={() => router.push('/notifications')}
-                >
-                    <Ionicons name="notifications" size={24} color="#000" />
-                    {unreadCount > 0 && <View style={styles.redDot} />}
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>
-                    <Ionicons name="person" size={24} color="#000" />
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
+  Button,
+  C,
+  Card,
+  Chip,
+  Field,
+  Notice,
+  PageTitle,
+  Row,
+  Screen,
+  T,
+} from "../../components/ui";
+import { useSession } from "../../components/session";
+import { authService } from "../../services/auth.service";
+import { errorMessage } from "../../services/api";
+export default function Settings() {
+  const { user, refresh, logout } = useSession();
+  const wide = useWindowDimensions().width >= 1180;
+  const [name, setName] = useState(""),
+    [age, setAge] = useState(""),
+    [conditions, setConditions] = useState(""),
+    [allergies, setAllergies] = useState(""),
+    [contact, setContact] = useState(""),
+    [phone, setPhone] = useState(""),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(""),
+    [error, setError] = useState("");
+  useEffect(() => {
+    if (user) {
+      setName(user.full_names ?? "");
+      setAge(user.age ? String(user.age) : "");
+      setConditions(user.conditions ?? "");
+      setAllergies(user.allergies ?? "");
+      setContact(user.emergency_contact_name ?? "");
+      setPhone(user.emergency_contact_phone ?? "");
+    }
+  }, [user]);
+  async function save() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      if (
+        age &&
+        (!Number.isInteger(Number(age)) || Number(age) < 0 || Number(age) > 130)
+      )
+        throw new Error("Enter an age between 0 and 130.");
+      await authService.updateProfile({
+        full_names: name,
+        age: age ? Number(age) : null,
+        conditions,
+        allergies,
+        emergency_contact_name: contact,
+        emergency_contact_phone: phone,
+      });
+      await refresh();
+      setMessage("Your profile has been saved.");
+    } catch (e) {
+      setError(
+        e instanceof Error && e.message.startsWith("Enter an age")
+          ? e.message
+          : errorMessage(e),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function push(value: boolean) {
+    setError("");
+    try {
+      await authService.updateProfile({ push_notifications_enabled: value });
+      await refresh();
+      setMessage("Your reminder preference has been saved.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+  return (
+    <Screen>
+      <PageTitle
+        eyebrow="CARE, ON YOUR TERMS"
+        title="Your profile & preferences"
+        body="Keep the details that matter close, and make this space yours."
+      />
+      {error && <Notice message={error} error />}
+      {message && <Notice message={message} />}
+      <View
+        style={{
+          flexDirection: wide ? "row" : "column",
+          gap: 24,
+          marginTop: 18,
+        }}
+      >
+        <View style={{ flex: wide ? 1.6 : undefined, gap: 22 }}>
+          <Card>
+            <Row style={{ justifyContent: "space-between" }}>
+              <T variant="h2">About you</T>
+              <Chip
+                label={
+                  user?.username.startsWith("preview_")
+                    ? "Preview profile"
+                    : "Personal profile"
+                }
+              />
+            </Row>
+            <Field label="Full name" value={name} onChangeText={setName} />
+            <Row style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+              <View style={{ flex: 2, minWidth: 180 }}>
+                <Field
+                  label="Email address"
+                  value={user?.email ?? ""}
+                  editable={false}
+                  hint="Your sign-in email"
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: 110 }}>
+                <Field
+                  label="Age (optional)"
+                  value={age}
+                  onChangeText={setAge}
+                  keyboardType="number-pad"
+                />
+              </View>
+            </Row>
+            <Field
+              label="Conditions you manage (optional)"
+              value={conditions}
+              onChangeText={setConditions}
+              multiline
+              placeholder="The details you want in your care record"
+            />
+            <Field
+              label="Allergies (optional)"
+              value={allergies}
+              onChangeText={setAllergies}
+              placeholder="Known allergies, if any"
+            />
+            <View
+              style={{ height: 1, backgroundColor: C.line, marginVertical: 5 }}
+            />
+            <T variant="h3">Your emergency contact</T>
+            <T variant="small" color={C.muted}>
+              These details stay in your profile. Saving them does not contact
+              anyone or share access to your health records.
+            </T>
+            <Field
+              label="Contact name"
+              value={contact}
+              onChangeText={setContact}
+              placeholder="Full name"
+            />
+            <Field
+              label="Contact phone"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="Phone number"
+            />
+            <Row style={{ justifyContent: "flex-end" }}>
+              <Button
+                label="Save profile"
+                icon="checkmark"
+                loading={busy}
+                onPress={() => void save()}
+              />
+            </Row>
+          </Card>
+        </View>
+        <View style={{ flex: wide ? 1 : undefined, gap: 22 }}>
+          <Card>
+            <T variant="h3">Your reminders</T>
+            <Row
+              style={{
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
             >
-                <Text style={styles.title}>Settings</Text>
-
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Reminder mode</Text>
-                    <View style={styles.optionsList}>
-                        {["Sound", "Vibration", "Silent"].map((mode) => (
-                            <TouchableOpacity
-                                key={mode}
-                                style={styles.optionItem}
-                                onPress={() => setReminderMode(mode)}
-                            >
-                                <Ionicons
-                                    name={reminderMode === mode ? "radio-button-on" : "radio-button-off"}
-                                    size={24}
-                                    color={reminderMode === mode ? "#000" : "#CCC"}
-                                />
-                                <Text style={[styles.optionText, reminderMode === mode && styles.selectedOptionText]}>
-                                    {mode}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Reminder Strength</Text>
-                    <View style={styles.optionsList}>
-                        {[
-                            { label: "Gentle", value: "Gentle" },
-                            { label: "Normal", value: "Normal" },
-                            { label: "Persistent (keeps reminding until taken)", value: "Persistent" }
-                        ].map((strength) => (
-                            <TouchableOpacity
-                                key={strength.value}
-                                style={styles.optionItem}
-                                onPress={() => setReminderStrength(strength.value)}
-                            >
-                                <Ionicons
-                                    name={reminderStrength === strength.value ? "radio-button-on" : "radio-button-off"}
-                                    size={24}
-                                    color={reminderStrength === strength.value ? "#000" : "#CCC"}
-                                />
-                                <Text style={[styles.optionText, reminderStrength === strength.value && styles.selectedOptionText]}>
-                                    {strength.label}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Snooze options</Text>
-                    <View style={styles.snoozeRow}>
-                        {["5 min", "10 min", "30 min"].map((option) => (
-                            <TouchableOpacity
-                                key={option}
-                                style={styles.optionItem}
-                                onPress={() => setSnoozeOption(option)}
-                            >
-                                <Ionicons
-                                    name={snoozeOption === option ? "radio-button-on" : "radio-button-off"}
-                                    size={24}
-                                    color={snoozeOption === option ? "#000" : "#CCC"}
-                                />
-                                <Text style={[styles.optionText, snoozeOption === option && styles.selectedOptionText]}>
-                                    {option}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Smart reminders</Text>
-                    <Text style={styles.subLabel}>Didn&apos;t open device</Text>
-                    <TouchableOpacity
-                        style={styles.optionItem}
-                        onPress={() => setSmartReminders(!smartReminders)}
-                    >
-                        <Ionicons
-                            name={smartReminders ? "checkbox" : "square-outline"}
-                            size={24}
-                            color={smartReminders ? "#000" : "#CCC"}
-                        />
-                        <Text style={[styles.optionText, smartReminders && styles.selectedOptionText]}>
-                            Remind me again
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Missed dose alerts</Text>
-                    {filteredAlerts.length === 0 ? (
-                        <Text style={{ textAlign: 'center', color: '#999', marginTop: 10 }}>
-                            {searchQuery ? "No matching alerts found." : "No missed dose alerts."}
-                        </Text>
-                    ) : (
-                        filteredAlerts.map((alert, index) => (
-                            <View key={index} style={styles.alertCard}>
-                                <Ionicons name="alert-circle" size={48} color="#FF3B30" />
-                                <View style={styles.alertDetails}>
-                                    <Text style={styles.alertDate}>{alert.date}</Text>
-                                    <Text style={styles.alertMessage}>You missed your {alert.time} dose</Text>
-                                </View>
-                            </View>
-                        ))
-                    )}
-                </View>
-
-                <View style={{ height: 100 }} />
-            </ScrollView>
-        </SafeAreaView>
-    );
+              <View style={{ flex: 1, gap: 6, paddingRight: 10 }}>
+                <T style={{ fontFamily: "Inter_500Medium" }}>Push reminders</T>
+                <T variant="small" color={C.muted}>
+                  Your preference is saved to your account. Delivery requires
+                  notification permission in the native mobile app.
+                </T>
+              </View>
+              <Switch
+                accessibilityLabel="Push reminder preference"
+                value={user?.push_notifications_enabled ?? false}
+                onValueChange={(value) => void push(value)}
+                trackColor={{ false: C.line, true: "#82AB92" }}
+                thumbColor={C.white}
+              />
+            </Row>
+            <View style={{ height: 1, backgroundColor: C.line }} />
+            <T variant="small" color={C.muted}>
+              In-app notifications are available in your inbox. Email reminders
+              are not available yet.
+            </T>
+          </Card>
+          <Card style={{ backgroundColor: C.pale }}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={24}
+              color={C.primary}
+            />
+            <T variant="h3">You choose what to share</T>
+            <T color={C.muted}>
+              Medication context is off by default in the assistant. You can
+              choose to include it for a conversation.
+            </T>
+          </Card>
+          <Button
+            label="Sign out"
+            variant="secondary"
+            icon="log-out-outline"
+            onPress={() => {
+              void logout().then(() => router.replace("/auth/login"));
+            }}
+          />
+          <T variant="small" color={C.muted} style={{ textAlign: "center" }}>
+            Adheronix · Made for your everyday.
+          </T>
+        </View>
+      </View>
+    </Screen>
+  );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#fff",
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        paddingBottom: 20,
-        gap: 15,
-    },
-    searchWrapper: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#fff',
-        borderRadius: 25,
-        height: 45,
-        paddingHorizontal: 15,
-        borderWidth: 1,
-        borderColor: '#EEE',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2,
-    },
-    searchInput: {
-        flex: 1,
-        fontSize: 14,
-        fontFamily: "Inter_400Regular",
-        color: '#000',
-    },
-    searchIconContainer: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#D1D1D1',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    notificationButton: {
-        position: 'relative',
-    },
-    redDot: {
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: 'red',
-        borderWidth: 1,
-        borderColor: '#fff',
-    },
-    profileButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#000',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    scrollContent: {
-        paddingHorizontal: 20,
-    },
-    title: {
-        fontSize: 28,
-        fontFamily: "DMSerifDisplay_400Regular",
-        marginBottom: 30,
-        color: '#000',
-    },
-    section: {
-        marginBottom: 30,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontFamily: "Inter_700Bold",
-        color: '#333',
-        marginBottom: 15,
-    },
-    optionsList: {
-        gap: 12,
-    },
-    optionItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-    },
-    optionText: {
-        fontSize: 14,
-        color: '#666',
-        fontFamily: "Inter_400Regular",
-    },
-    selectedOptionText: {
-        color: '#000',
-        fontFamily: "Inter_700Bold",
-    },
-    snoozeRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    subLabel: {
-        fontSize: 12,
-        color: '#888',
-        fontFamily: "Inter_400Regular",
-        marginBottom: 5,
-    },
-    alertCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFE5E5',
-        borderRadius: 15,
-        padding: 15,
-        marginBottom: 15,
-        gap: 15,
-        borderWidth: 1,
-        borderColor: '#FFD1D1',
-        // Shadow
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 3,
-    },
-    alertDetails: {
-        flex: 1,
-    },
-    alertDate: {
-        fontSize: 10,
-        color: '#FF3B30',
-        fontFamily: "Inter_400Regular",
-        marginBottom: 2,
-    },
-    alertMessage: {
-        fontSize: 14,
-        color: '#FF3B30',
-        fontFamily: "Inter_700Bold",
-    },
-});
