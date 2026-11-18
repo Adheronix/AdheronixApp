@@ -22,28 +22,36 @@ import { scheduleService } from "../../services/schedule.service";
 import { displayTime, medicationName } from "../../services/types";
 import { useCareProgress } from "../../components/care-progress";
 import { errorMessage } from "../../services/api";
-const load = async () => ({ adherence: await scheduleService.getAdherence() });
+import { DoseReportSheet } from "../../components/dose-report-sheet";
+import {
+  doseReason,
+  doseReportLabel,
+  personalDoseNote,
+  reportingPeriod,
+  summarizeDoseReports,
+} from "../../services/dose-reporting";
+import type { Dose } from "../../services/types";
+const load = async () => {
+  const period = reportingPeriod();
+  const history = await scheduleService.getSchedules(period.start, period.end);
+  return { report: summarizeDoseReports(history) };
+};
 export default function Home() {
   const { user, refreshUnread } = useSession();
   const { data, loading, error, refresh } = useResource(load);
   const [acting, setActing] = useState(""),
     [actionError, setActionError] = useState("");
+  const [editing, setEditing] = useState<Dose | null>(null);
   const wide = useWindowDimensions().width >= 1180;
   const { doses, routine, refresh: refreshCare } = useCareProgress();
   const taken = routine.confirmed,
     total = doses.length;
   const percent = total ? Math.round((taken / total) * 100) : 0;
-  async function confirm(id: string, status: "taken" | "skipped") {
+  async function confirm(id: string) {
     setActing(id);
     setActionError("");
     try {
-      await scheduleService.updateStatus(
-        id,
-        status,
-        status === "taken"
-          ? "Confirmed by patient in Adheronix"
-          : "Patient recorded this dose as skipped",
-      );
+      await scheduleService.updateStatus(id, "taken", "");
       await Promise.all([refresh(), refreshCare()]);
       await refreshUnread();
     } catch (e) {
@@ -113,7 +121,7 @@ export default function Home() {
                       color={C.primary}
                       style={{ fontFamily: "Inter_500Medium" }}
                     >
-                      doses recorded today
+                      doses reported taken today
                     </T>
                   </>
                 ) : (
@@ -181,7 +189,7 @@ export default function Home() {
                   color={C.success}
                   style={{ fontFamily: "Inter_600SemiBold" }}
                 >
-                  {percent}% recorded
+                  {percent}% reported taken
                 </T>
               )}
             </Row>
@@ -240,6 +248,9 @@ export default function Home() {
                   doses.map((dose, i) => {
                     const done = dose.status === "taken",
                       skipped = dose.status === "skipped";
+                    const reported =
+                      done && dose.confirmation_source === "patient";
+                    const unsure = doseReportLabel(dose) === "Unsure";
                     const name =
                       dose.medication_name || medicationName(dose.medication);
                     const p =
@@ -266,15 +277,15 @@ export default function Home() {
                               width: 42,
                               height: 42,
                               borderRadius: 13,
-                              backgroundColor: done ? C.mint : C.bg,
+                              backgroundColor: reported ? C.mint : C.bg,
                               alignItems: "center",
                               justifyContent: "center",
                             }}
                           >
                             <Ionicons
-                              name={done ? "checkmark" : "medical-outline"}
+                              name={reported ? "checkmark" : "medical-outline"}
                               size={21}
-                              color={done ? C.primary : C.muted}
+                              color={reported ? C.primary : C.muted}
                             />
                           </View>
                           <View style={{ flex: 1, gap: 3 }}>
@@ -288,23 +299,31 @@ export default function Home() {
                             label={
                               done
                                 ? dose.confirmation_source === "patient"
-                                  ? "Confirmed"
-                                  : "Recorded"
+                                  ? "Reported taken"
+                                  : "Source unknown"
                                 : skipped
                                   ? "Skipped"
-                                  : dose.time_until === "Overdue"
-                                    ? "To review"
-                                    : "Upcoming"
+                                  : unsure
+                                    ? "Unsure"
+                                    : dose.time_until === "Overdue"
+                                      ? "To review"
+                                      : "Upcoming"
                             }
                             tone={
-                              done
+                              reported
                                 ? "green"
-                                : dose.time_until === "Overdue"
+                                : !unsure && dose.time_until === "Overdue"
                                   ? "amber"
                                   : "neutral"
                             }
                           />
                         </Row>
+                        {unsure && (
+                          <T variant="small" color={C.muted}>
+                            You recorded that you’re unsure. Intake remains
+                            unknown.
+                          </T>
+                        )}
                         {done ? (
                           <T variant="small" color={C.muted}>
                             {dose.confirmation_source === "patient"
@@ -321,8 +340,10 @@ export default function Home() {
                           </T>
                         ) : skipped ? (
                           <T variant="small" color={C.muted}>
-                            Recorded as skipped. Follow your clinician’s
-                            instructions about missed doses.
+                            {doseReason(dose.notes) || "Recorded as skipped."}
+                            {personalDoseNote(dose.notes)
+                              ? " · " + personalDoseNote(dose.notes)
+                              : ""}
                           </T>
                         ) : (
                           <Row
@@ -337,7 +358,7 @@ export default function Home() {
                               label="Record as skipped"
                               disabled={!!acting}
                               onPress={() =>
-                                void confirm(dose.schedule_id, "skipped")
+                                setEditing({ ...dose, status: "skipped" })
                               }
                             />
                             <Button
@@ -346,11 +367,19 @@ export default function Home() {
                               icon="checkmark"
                               loading={acting === dose.schedule_id}
                               disabled={!!acting && acting !== dose.schedule_id}
-                              onPress={() =>
-                                void confirm(dose.schedule_id, "taken")
-                              }
+                              onPress={() => void confirm(dose.schedule_id)}
                             />
                           </Row>
+                        )}
+                        {(done || skipped || dose.status === "missed") && (
+                          <Button
+                            small
+                            variant="ghost"
+                            label="Edit entry"
+                            disabled={!!acting}
+                            style={{ alignSelf: "flex-start" }}
+                            onPress={() => setEditing(dose)}
+                          />
                         )}
                       </View>
                     );
@@ -372,12 +401,10 @@ export default function Home() {
                 </Row>
                 <Row style={{ alignItems: "baseline", gap: 8 }}>
                   <T variant="display">
-                    {data?.adherence.total_scheduled
-                      ? data.adherence.adherence_rate + "%"
-                      : "—"}
+                    {data?.report.total ? data.report.percent + "%" : "—"}
                   </T>
                   <T variant="small" color={C.muted}>
-                    recorded as taken
+                    reported taken
                   </T>
                 </Row>
                 <View
@@ -391,23 +418,28 @@ export default function Home() {
                   <View
                     style={{
                       height: 7,
-                      width: (Math.min(
-                        100,
-                        data?.adherence.adherence_rate ?? 0,
-                      ) + "%") as `${number}%`,
+                      width: (Math.min(100, data?.report.percent ?? 0) +
+                        "%") as `${number}%`,
                       backgroundColor: C.accent,
                       borderRadius: 4,
                     }}
                   />
                 </View>
                 <T variant="small" color={C.muted}>
-                  {data?.adherence.total_scheduled
-                    ? data.adherence.taken +
-                      " recorded taken · " +
-                      data.adherence.total_scheduled +
+                  {data?.report.total
+                    ? data.report.reportedTaken +
+                      " reported taken · " +
+                      data.report.total +
                       " doses due or recorded this week"
                     : "Your history will appear as you build your routine."}
                 </T>
+                {data && data.report.total > 0 && (
+                  <T variant="small" color={C.muted}>
+                    {data.report.skipped} skipped · {data.report.missed}{" "}
+                    recorded missed · {data.report.unknown} unknown. Based on
+                    your records, not verified ingestion.
+                  </T>
+                )}
                 <Button
                   small
                   variant="ghost"
@@ -461,6 +493,21 @@ export default function Home() {
             </View>
           </View>
         </View>
+      )}
+      {editing && (
+        <DoseReportSheet
+          dose={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void Promise.all([refresh(), refreshCare(), refreshUnread()]).catch(
+              () =>
+                setActionError(
+                  "Your entry was saved. Refresh your plan to see the latest record.",
+                ),
+            );
+          }}
+        />
       )}
     </Screen>
   );

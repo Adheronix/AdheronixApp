@@ -41,6 +41,10 @@ export interface Adherence {
   missed: number;
   skipped: number;
   adherence_rate: number;
+  patient_reported_taken?: number;
+  unattributed_taken?: number;
+  unreported?: number;
+  upcoming?: number;
   period: { start: string; end: string };
 }
 export interface NotificationItem {
