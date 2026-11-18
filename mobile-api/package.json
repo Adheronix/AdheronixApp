@@ -1,7 +1,7 @@
 {
   "name": "adheronix",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "start": "bash ./set-local-ip.sh && expo start --clear",
     "start:lan": "bash ./set-local-ip.sh && expo start --lan --clear",

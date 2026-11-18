@@ -25,39 +25,43 @@ import { useResource } from "../hooks/use-resource";
 import { useSession } from "../components/session";
 import { medicationService } from "../services/medication.service";
 import { scheduleService } from "../services/schedule.service";
-import { smartboxService } from "../services/smartbox.service";
+import { DoseReportSheet } from "../components/dose-report-sheet";
 import {
-  displayTime,
-  dosage,
-  localDate,
-  medicationName,
-} from "../services/types";
+  doseHistoryLine,
+  doseReportLabel,
+  reportingPeriod,
+  summarizeDoseReports,
+} from "../services/dose-reporting";
+import type { Dose } from "../services/types";
+import { displayTime, dosage, medicationName } from "../services/types";
 const load = async () => {
-  const start = new Date();
-  start.setDate(start.getDate() - 6);
-  const [medications, history, devices] = await Promise.all([
+  const now = new Date();
+  const period = reportingPeriod(now);
+  const [medications, history] = await Promise.all([
     medicationService.getAll(),
-    scheduleService.getSchedules(localDate(start), localDate()),
-    smartboxService.getDevices(),
+    scheduleService.getSchedules(period.start, period.end),
   ]);
-  return { medications, history, devices };
+  return { medications, report: summarizeDoseReports(history, now) };
 };
 export default function Reports() {
   const { user } = useSession();
-  const { data, loading, error } = useResource(useCallback(load, []));
+  const { data, loading, error, refresh } = useResource(useCallback(load, []));
   const [shareError, setShareError] = useState("");
   const [review, setReview] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const recorded = (data?.history ?? []).filter((d) => d.status !== "pending");
-  const confirmed = recorded.filter(
-    (d) => d.status === "taken" && d.confirmation_source === "patient",
-  ).length;
+  const [editing, setEditing] = useState<Dose | null>(null);
+  const recorded = data?.report.doses ?? [];
+  const confirmed = data?.report.reportedTaken ?? 0;
   const message = data
     ? [
         "Adheronix — medication summary",
         user?.full_names ?? "Patient",
         "Generated " + new Date().toLocaleDateString("en-GB"),
-        "Patient-confirmed doses (last 7 days): " + confirmed,
+        `Period: ${data.report.period.start} to ${data.report.period.end}`,
+        `Patient-reported taken: ${confirmed} of ${data.report.total} doses due or recorded (${data.report.percent === null ? "no doses due" : data.report.percent + "%"})`,
+        `Skipped records: ${data.report.skipped}; missed records: ${data.report.missed}; unknown: ${data.report.unknown}`,
+        `Unknown: ${data.report.unreported} unanswered or unsure; ${data.report.unattributedTaken} taken records with an unknown source.`,
+        `Upcoming today, excluded from the percentage: ${data.report.upcoming}`,
         ...data.medications.map(
           (m) =>
             medicationName(m) +
@@ -67,18 +71,8 @@ export default function Reports() {
             m.frequency +
             " times daily",
         ),
-        ...recorded.map(
-          (d) =>
-            d.scheduled_date +
-            " " +
-            displayTime(d.scheduled_time) +
-            " — " +
-            medicationName(d.medication) +
-            " — " +
-            d.status +
-            (d.notes ? " — " + d.notes : ""),
-        ),
-        "Patient-entered records and device observations. Not a diagnosis or a replacement for a clinical record.",
+        ...recorded.map(doseHistoryLine),
+        "These are app records, not verified ingestion or evidence of health improvement. Device observations remain separate. Personal notes are included; review before sharing.",
       ].join("\n")
     : "";
   async function share() {
@@ -158,8 +152,8 @@ export default function Reports() {
                 {[
                   {
                     value: confirmed,
-                    label: "Patient-confirmed doses",
-                    note: "Last 7 days",
+                    label: "Reported taken",
+                    note: `Of ${data?.report.total ?? 0} doses due or recorded`,
                   },
                   {
                     value: data?.medications.length ?? 0,
@@ -190,6 +184,19 @@ export default function Reports() {
                   </View>
                 ))}
               </Row>
+              {data && data.report.total > 0 && (
+                <View style={{ gap: 5 }}>
+                  <T variant="small" color={C.muted}>
+                    {data.report.skipped} skipped · {data.report.missed}{" "}
+                    recorded missed · {data.report.unknown} unknown
+                  </T>
+                  <T variant="small" color={C.muted}>
+                    Unknown includes unanswered or unsure entries and older
+                    taken records without a source. Upcoming doses are not
+                    counted yet.
+                  </T>
+                </View>
+              )}
               {!recorded.length && (
                 <T variant="small" color={C.muted}>
                   No dose entries in this period yet. This isn’t an assessment
@@ -234,11 +241,11 @@ export default function Reports() {
               )}
             </Card>
             <Card>
-              <T variant="h2">Recorded dose history</T>
+              <T variant="h2">Dose history</T>
               {!recorded.length ? (
                 <Empty
                   title="Your history grows with your routine"
-                  body="Dose confirmations and skipped entries will appear here as you record them."
+                  body="Doses due and entries you record will appear here. Upcoming doses are not counted yet."
                 />
               ) : (
                 recorded.slice(0, 40).map((d) => (
@@ -264,24 +271,32 @@ export default function Reports() {
                         </T>
                       </View>
                       <Chip
-                        label={
-                          d.status === "taken"
-                            ? "Taken"
-                            : d.status === "skipped"
-                              ? "Skipped"
-                              : "Missed"
+                        label={doseReportLabel(d)}
+                        tone={
+                          d.status === "taken" &&
+                          d.confirmation_source === "patient"
+                            ? "green"
+                            : "neutral"
                         }
-                        tone={d.status === "taken" ? "green" : "neutral"}
                       />
                     </Row>
                     <T variant="small" color={C.muted}>
                       {d.confirmation_source === "patient"
-                        ? "Confirmed by patient"
+                        ? "Reported by you"
                         : d.status === "taken"
                           ? "Previously recorded — confirmation source unavailable"
-                          : "Patient status record"}
+                          : d.status === "pending"
+                            ? "Intake is unknown"
+                            : "Recorded status"}
                       {d.notes ? " · " + d.notes : ""}
                     </T>
+                    <Button
+                      small
+                      variant="ghost"
+                      label="Edit entry"
+                      style={{ alignSelf: "flex-start" }}
+                      onPress={() => setEditing(d)}
+                    />
                   </View>
                 ))
               )}
@@ -356,6 +371,16 @@ export default function Reports() {
           </View>
         </View>
       </Modal>
+      {editing && (
+        <DoseReportSheet
+          dose={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void refresh();
+          }}
+        />
+      )}
     </Screen>
   );
 }

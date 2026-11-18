@@ -24,7 +24,7 @@ import { MedicationScheduleService } from './medication-schedule.service';
 import { MedicationSchedule } from './medication-schedule.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
-import { UpdateIntakeDto } from './dto/update-intake.dto';
+import { IntakeNoteDto, UpdateIntakeDto } from './dto/update-intake.dto';
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -88,8 +88,9 @@ export class MedicationScheduleController {
   @UseGuards(JwtAuthGuard)
   @Get('adherence')
   @ApiOperation({
-    summary: 'Get weekly adherence statistics',
-    description: 'Returns adherence rate and statistics for the past 7 days',
+    summary: 'Get weekly dose reporting statistics',
+    description:
+      'Returns patient-reported intake, unattributed records and unreported entries for the past 7 days. Not verified ingestion.',
   })
   @ApiOkResponse({ description: 'Adherence stats returned' })
   getAdherence(@Req() req: AuthenticatedRequest) {
@@ -173,12 +174,12 @@ export class MedicationScheduleController {
   markAsTaken(
     @Param('scheduleId') scheduleId: string,
     @Req() req: AuthenticatedRequest,
-    @Body('notes') notes?: string,
+    @Body() dto: IntakeNoteDto,
   ) {
     return this.scheduleService.markAsTaken(
       req.user.patient_id,
       scheduleId,
-      notes,
+      dto.notes,
     );
   }
 

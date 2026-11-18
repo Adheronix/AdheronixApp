@@ -281,6 +281,7 @@ export class MedicationScheduleService {
       throw new NotFoundException('Schedule not found for this patient');
     }
 
+    const previousStatus = schedule.status;
     schedule.status = dto.status;
 
     if (dto.status === IntakeStatus.TAKEN) {
@@ -288,11 +289,15 @@ export class MedicationScheduleService {
       schedule.confirmation_source = 'patient';
     } else {
       schedule.taken_at = null;
-      schedule.confirmation_source = null;
+      schedule.confirmation_source =
+        dto.status === IntakeStatus.PENDING ? null : 'patient';
     }
 
-    if (dto.notes) {
+    if (dto.notes !== undefined) {
       schedule.notes = dto.notes;
+    } else if (previousStatus !== dto.status) {
+      // A correction must not retain a reason belonging to the previous status.
+      schedule.notes = '';
     }
 
     return this.scheduleRepository.save(schedule);
@@ -386,6 +391,14 @@ export class MedicationScheduleService {
     );
     const total = due.length;
     const taken = due.filter((s) => s.status === IntakeStatus.TAKEN).length;
+    const patientReportedTaken = due.filter(
+      (s) =>
+        s.status === IntakeStatus.TAKEN && s.confirmation_source === 'patient',
+    ).length;
+    const unattributedTaken = taken - patientReportedTaken;
+    const unreported = due.filter(
+      (s) => s.status === IntakeStatus.PENDING,
+    ).length;
     const missed = due.filter((s) => s.status === IntakeStatus.MISSED).length;
     const skipped = due.filter((s) => s.status === IntakeStatus.SKIPPED).length;
 
@@ -393,9 +406,16 @@ export class MedicationScheduleService {
       period: { start: startDate, end: endDate },
       total_scheduled: total,
       taken,
+      patient_reported_taken: patientReportedTaken,
+      unattributed_taken: unattributedTaken,
+      unreported,
+      upcoming: schedules.length - total,
       missed,
       skipped,
-      adherence_rate: total > 0 ? Math.round((taken / total) * 100) : 0,
+      // Retain the legacy response keys, but never count unattributed history
+      // as a patient report or silently remove unknown entries from the denominator.
+      adherence_rate:
+        total > 0 ? Math.round((patientReportedTaken / total) * 100) : 0,
     };
   }
 }
