@@ -88,9 +88,16 @@ test("reason and note round-trip, and a correction does not carry a reason to an
   );
   assert.equal(doseReason(note), "Cost or access");
   assert.equal(personalDoseNote(note), "Ask about supply");
-  assert.equal(buildDoseNote("taken", "Cost or access", ""), "");
-  assert.equal(buildDoseNote("skipped", "", ""), "");
-  assert.equal(buildDoseNote("skipped", "invented", ""), "");
+  assert.equal(
+    buildDoseNote("taken", "Cost or access", ""),
+    "Confirmed by patient in Adheronix",
+  );
+  assert.equal(
+    buildDoseNote("skipped", "", ""),
+    "Patient recorded this dose as skipped",
+  );
+  assert.equal(doseReason(buildDoseNote("skipped", "invented", "")), "");
+  assert.equal(personalDoseNote(buildDoseNote("taken", "", "")), "");
 });
 test("unsure remains unknown, while share text preserves the source of taken entries", () => {
   const unsure = {

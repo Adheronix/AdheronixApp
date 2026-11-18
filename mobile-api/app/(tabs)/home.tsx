@@ -24,6 +24,7 @@ import { useCareProgress } from "../../components/care-progress";
 import { errorMessage } from "../../services/api";
 import { DoseReportSheet } from "../../components/dose-report-sheet";
 import {
+  buildDoseNote,
   doseReason,
   doseReportLabel,
   personalDoseNote,
@@ -51,7 +52,11 @@ export default function Home() {
     setActing(id);
     setActionError("");
     try {
-      await scheduleService.updateStatus(id, "taken", "");
+      await scheduleService.updateStatus(
+        id,
+        "taken",
+        buildDoseNote("taken", "", ""),
+      );
       await Promise.all([refresh(), refreshCare()]);
       await refreshUnread();
     } catch (e) {

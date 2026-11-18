@@ -143,7 +143,14 @@ export function buildDoseNote(
       : status === "pending"
         ? "Unsure whether this dose was taken."
         : "";
-  return [prefix, note.trim()].filter(Boolean).join("\n");
+  // Older deployed APIs only replace truthy notes. A neutral marker prevents
+  // a correction with no personal note from retaining a previous skipped reason.
+  return (
+    [prefix, note.trim()].filter(Boolean).join("\n") ||
+    (status === "taken"
+      ? "Confirmed by patient in Adheronix"
+      : "Patient recorded this dose as skipped")
+  );
 }
 
 export function doseHistoryLine(dose: Dose) {
