@@ -1,0 +1,16 @@
+[Unit]
+Description=Adheronix MediBox phone control and telemetry
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/medibox
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/medibox/medibox.py
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
