@@ -42,7 +42,7 @@ The scale initially shows real raw ADC readings. It deliberately withholds grams
 
 Once calibrated and receiving fresh sensor samples, the Pi sends actual weight to `/api/smartbox/weight` every five seconds and fetches `/api/smartbox/:deviceId/schedule` every fifteen seconds. Its explicit User-Agent avoids rejection of the default Python client by the existing edge browser check. No synthetic weight is uploaded to make the box appear online. The native app lists the mapped box immediately; its connection indicator updates after real weight reports arrive.
 
-The LCD alternates compartment weight/calibration status and the backend schedule. Physical button presses are local activity, with a short buzzer response if that circuit is enabled. This implementation does not automatically mark medication taken, identify tablets, or generate removal/dose events from unvalidated weight thresholds. Medication reminders and dose confirmations remain in the existing app. The camera is detected on the Pi but streaming/medicine identification is outside this implementation.
+The LCD alternates compartment weight/calibration status and the backend schedule. Physical button presses are local activity. The buzzer test tries brief DC and pulsed drive for active/passive devices without changing the circuit; audible operation still needs verification. The GPIO17 indicator follows successful API connection and healthy sensor readings, including before scale calibration. This implementation does not automatically mark medication taken, identify tablets, or generate removal/dose events from unvalidated weight thresholds. Medication reminders and dose confirmations remain in the existing app. The camera is detected on the Pi but streaming/medicine identification is outside this implementation.
 
 ## Verification, 21 November 2026
 
@@ -50,7 +50,7 @@ The LCD alternates compartment weight/calibration status and the backend schedul
 - Built the sketch for the detected ATmega328P, uploaded it and verified flash contents. Original flash/EEPROM retained privately on the Pi.
 - Live serial tests received forward/reverse acknowledgements, `STATE 255 255`, `STATE -210 -210`, `STATE 0 0` after STOP, and `STATE 0 0` after withheld commands exceeded the watchdog.
 - Pi service active with linger enabled; live HX711 samples and user-reported button presses observed. LCD backpack detected and initialized at 0x27. Schedule API returned 200 for the provisioned device.
-- Physical wheel rotation, LCD readability, buzzer sound, valid ultrasonic echoes, known-mass calibration and weight delivery to the native app remain acceptance steps. Commanded motor states do not establish physical motion.
+- The owner reports **no wheel movement**, **LCD backlight without readable text**, and **no buzzer sound**. Starting power was raised after confirming six 1.2 V AA cells, but movement remains unverified. Physical motor power/wiring needs inspection. The empty tray was zeroed; no independently weighed reference is available yet. Valid ultrasonic echoes, known-mass calibration and weight delivery to the native app remain acceptance steps. Commanded motor states do not establish physical motion.
 
 Run checks with `python3 -m unittest -v test_medibox.py`. The HTTP checks need permission to bind an ephemeral local port.
 

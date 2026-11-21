@@ -246,17 +246,31 @@ class Box:
                     distance = self.distance.distance * 100
                     self.distance_cm = round(distance, 1) if distance > 0 else None
                 if self.led:
-                    self.led.value = bool(self.last_uploaded and not self.sensor_error)
+                    self.led.value = bool(not self.sensor_error and
+                        self.cloud in ('API connected; waiting for calibrated weight', 'Live weight delivered to app'))
                 time.sleep(0.25)
         except Exception as exc:
             self.events.append('Peripherals: ' + str(exc))
 
     def button_pressed(self):
         self.events.append('Physical button pressed at ' + datetime.datetime.now().strftime('%H:%M:%S'))
+        self.beep()
+
+    def beep(self):
         if self.buzzer:
-            self.buzzer.on()
-            time.sleep(0.15)
-            self.buzzer.off()
+            try:
+                # Test both an active DC buzzer and a passive piezo, without rewiring.
+                self.buzzer.on()
+                time.sleep(0.35)
+                self.buzzer.off()
+                time.sleep(0.15)
+                for _ in range(400):
+                    self.buzzer.on()
+                    time.sleep(0.0005)
+                    self.buzzer.off()
+                    time.sleep(0.0005)
+            finally:
+                self.buzzer.off()
 
     def display_loop(self):
         if not self.config.get('peripherals', {}).get('lcd'):
@@ -370,7 +384,8 @@ class Box:
         elif action == 'beep':
             if not self.buzzer:
                 raise ValueError('Buzzer circuit is not enabled')
-            self.start(self.button_pressed)
+            self.events.append('Buzzer test requested')
+            self.start(self.beep)
         else:
             raise ValueError('Unknown action')
 
