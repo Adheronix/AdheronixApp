@@ -1,0 +1,18 @@
+{
+  "device_id": "MEDIBOX-PI-0001",
+  "serial_port": "/dev/serial/by-id/REPLACE_WITH_DETECTED_ARDUINO",
+  "speed": 90,
+  "max_speed": 140,
+  "port": 8080,
+  "pairing_code": "REPLACE_WITH_RANDOM_SIX_DIGITS",
+  "api_url": "https://adheronix-api.diamondhardware.co",
+  "api_key": "",
+  "lcd_address": 39,
+  "peripherals": {
+    "button": false,
+    "led": false,
+    "buzzer": false,
+    "distance": false,
+    "lcd": false
+  }
+}
